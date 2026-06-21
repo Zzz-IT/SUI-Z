@@ -1,0 +1,38 @@
+﻿/*
+ * This file is part of SUI Z.
+ *
+ * SUI Z is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * SUI Z is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with SUI Z.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ * Copyright (c) 2026 SUI Z Contributors
+ */
+
+ext {
+    apply from: "$rootDir/api/manifest.gradle"
+
+    gitCommitId = 'git rev-parse --short HEAD'.execute([], rootDir).text.trim()
+    gitCommitCount = Integer.parseInt('git rev-list --count HEAD'.execute([], rootDir).text.trim())
+
+    moduleLibraryName = "SUI Z"
+
+    moduleId = "zygisk-SUI Z"
+
+    moduleName = "Zygisk - SUI Z"
+    moduleAuthor = "SUI Z Contributors"
+    moduleDescription = "Fork by XiaoTong.\\nModern superuser interface implementation. This module requires Magisk 24.0+ and Zygisk enabled. DO NOT add SystemUI and Settings to DenyList."
+    moduleVersionMinor = 5
+    moduleVersionPatch = 4.3
+    moduleVersion = "v${api_version_major}.${moduleVersionMinor}.${moduleVersionPatch}"
+    moduleVersionCode = gitCommitCount
+
+}
