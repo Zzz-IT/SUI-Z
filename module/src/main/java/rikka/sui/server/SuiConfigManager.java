@@ -293,6 +293,9 @@ public class SuiConfigManager extends ConfigManager {
 
         SHELL_SYNC_HANDLER.removeCallbacks(syncUidsToShellFileRunnable);
         SHELL_SYNC_HANDLER.post(() -> {
+            if (version != shellSyncVersion.get()) {
+                return;
+            }
             try {
                 syncUidsToShellFile();
             } catch (Throwable e) {

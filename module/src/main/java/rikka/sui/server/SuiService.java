@@ -628,12 +628,28 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
 
         @Override
         public void run() {
+            boolean changed = false;
+
             if (systemUiUid <= 0) {
-                systemUiUid = findPackageUid(MANAGER_APPLICATION_ID);
+                int uid = findPackageUid(MANAGER_APPLICATION_ID);
+                if (uid > 0) {
+                    systemUiUid = uid;
+                    changed = true;
+                }
             }
+
             if (settingsUid <= 0) {
-                settingsUid = findPackageUid(SettingsPackages.SETTINGS_CANDIDATES);
+                int uid = findPackageUid(SettingsPackages.SETTINGS_CANDIDATES);
+                if (uid > 0) {
+                    settingsUid = uid;
+                    changed = true;
+                }
             }
+
+            if (changed && !shellMode) {
+                syncUidsToSystemServer();
+            }
+
             if ((systemUiUid <= 0 || settingsUid <= 0) && attempts++ < 30) {
                 mainHandler.postDelayed(this, 1000);
             }
