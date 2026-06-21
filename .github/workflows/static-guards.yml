@@ -108,3 +108,33 @@ jobs:
             echo "Error: registerBridgeTokens must return accepted state"
             exit 1
           fi
+
+          if [ ! -f CHANGELOG.md ]; then
+            echo "Error: CHANGELOG.md is missing"
+            exit 1
+          fi
+
+          if [ ! -x scripts/extract_changelog.sh ]; then
+            echo "Error: scripts/extract_changelog.sh must exist and be executable"
+            exit 1
+          fi
+
+          if [ ! -x scripts/smoke_check.sh ]; then
+            echo "Error: scripts/smoke_check.sh must exist and be executable"
+            exit 1
+          fi
+
+          if ! grep -q 'scripts/extract_changelog.sh' .github/workflows/release.yml; then
+            echo "Error: release workflow must read notes from CHANGELOG.md"
+            exit 1
+          fi
+
+          if ! grep -q 'gh release create' .github/workflows/release.yml; then
+            echo "Error: release workflow must create GitHub Release"
+            exit 1
+          fi
+
+          if ! grep -q 'scripts/smoke_check.sh' .github/workflows/release.yml; then
+            echo "Error: release workflow must smoke-check ZIP before publishing"
+            exit 1
+          fi

@@ -2,9 +2,10 @@
 set -euo pipefail
 
 ZIP_FILE="${1:-}"
+EXPECTED_TAG="${2:-}"
 
 if [ -z "$ZIP_FILE" ] || [ ! -f "$ZIP_FILE" ]; then
-  echo "Usage: $0 path/to/module.zip"
+  echo "Usage: $0 path/to/module.zip [expected-tag]"
   exit 1
 fi
 
@@ -32,5 +33,13 @@ for abi in arm64-v8a armeabi-v7a x86 x86_64; do
   test -f "$TMP_DIR/lib/$abi/libadbd_preload.so" || { echo "Error: missing lib/$abi/libadbd_preload.so"; exit 1; }
   test -f "$TMP_DIR/lib/$abi/libsepolicy_checker.so" || { echo "Error: missing lib/$abi/libsepolicy_checker.so"; exit 1; }
 done
+
+if [ -n "$EXPECTED_TAG" ]; then
+  if ! grep -q "^version=.*${EXPECTED_TAG#v}" "$TMP_DIR/module.prop"; then
+    echo "Error: module.prop version does not contain ${EXPECTED_TAG#v}"
+    grep '^version=' "$TMP_DIR/module.prop" || true
+    exit 1
+  fi
+fi
 
 echo "smoke check passed: $ZIP_FILE"
