@@ -76,25 +76,34 @@ public class BridgeServiceClient {
         return null;
     }
 
-    protected static void setBinder(@Nullable IBinder binder) {
-        if (BridgeServiceClient.binder == binder) return;
-
-        if (BridgeServiceClient.binder != null) {
-            BridgeServiceClient.binder.unlinkToDeath(DEATH_RECIPIENT, 0);
+    protected static synchronized void setBinder(@Nullable IBinder newBinder) {
+        if (binder == newBinder) {
+            return;
         }
 
-        if (binder == null) {
-            BridgeServiceClient.binder = null;
-            BridgeServiceClient.service = null;
-        } else {
-            BridgeServiceClient.binder = binder;
-            BridgeServiceClient.service = IShizukuService.Stub.asInterface(binder);
-
+        if (binder != null) {
             try {
-                BridgeServiceClient.binder.linkToDeath(DEATH_RECIPIENT, 0);
+                binder.unlinkToDeath(DEATH_RECIPIENT, 0);
             } catch (Throwable ignored) {
             }
         }
+
+        if (newBinder == null) {
+            binder = null;
+            service = null;
+            return;
+        }
+
+        try {
+            newBinder.linkToDeath(DEATH_RECIPIENT, 0);
+        } catch (Throwable e) {
+            binder = null;
+            service = null;
+            return;
+        }
+
+        binder = newBinder;
+        service = IShizukuService.Stub.asInterface(newBinder);
     }
 
     private static void invalidateShortcutToken() {

@@ -121,6 +121,10 @@ public class BridgeServiceClient {
 
     private static IBinder requestBinderFromBridge() {
         final String TAG = "SuiBridgeDebug";
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            android.util.Log.w(TAG, "requestBinderFromBridge called on main thread");
+            return null;
+        }
 
         android.util.Log.d(TAG, "Attempting to request binder from bridge...");
 
@@ -180,7 +184,9 @@ public class BridgeServiceClient {
     }
 
     protected static synchronized void setBinder(@Nullable IBinder newBinder) {
-        if (binder == newBinder) return;
+        if (binder == newBinder) {
+            return;
+        }
 
         if (binder != null) {
             try {
@@ -189,16 +195,22 @@ public class BridgeServiceClient {
             }
         }
 
-        binder = newBinder;
-        if (newBinder != null) {
-            service = IShizukuService.Stub.asInterface(newBinder);
-            try {
-                binder.linkToDeath(DEATH_RECIPIENT, 0);
-            } catch (Throwable ignored) {
-            }
-        } else {
+        if (newBinder == null) {
+            binder = null;
             service = null;
+            return;
         }
+
+        try {
+            newBinder.linkToDeath(DEATH_RECIPIENT, 0);
+        } catch (Throwable e) {
+            binder = null;
+            service = null;
+            return;
+        }
+
+        binder = newBinder;
+        service = IShizukuService.Stub.asInterface(newBinder);
     }
 
     public static synchronized IShizukuService getService() {
@@ -210,6 +222,10 @@ public class BridgeServiceClient {
 
     @SuppressWarnings("unchecked")
     public static List<AppInfo> getApplications(int userId, boolean onlyShizuku) {
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            android.util.Log.w("SuiBridgeDebug", "getApplications called on main thread");
+            return Collections.emptyList();
+        }
         int retryCount = 0;
         long retryDelay = 500;
         while (retryCount < 3) {

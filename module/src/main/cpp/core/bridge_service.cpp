@@ -18,6 +18,8 @@
  */
 
 #include <jni.h>
+#include <mutex>
+
 #include "logging.h"
 #include "bridge_service.h"
 
@@ -28,9 +30,6 @@ namespace BridgeService {
 #define BRIDGE_SERVICE_NAME "activity"
 #define BRIDGE_ACTION_GET_BINDER 2
 
-// sync with IShizukuService.aidl
-#define DESCRIPTOR "moe.shizuku.server.IShizukuService"
-
 static jclass serviceManagerClass;
 static jmethodID getServiceMethod;
 static jmethodID transactMethod;
@@ -39,10 +38,8 @@ static jmethodID obtainMethod;
 static jmethodID recycleMethod;
 static jmethodID writeInterfaceTokenMethod;
 static jmethodID writeIntMethod;
-static jmethodID writeStringMethod;
 static jmethodID readExceptionMethod;
 static jmethodID readStrongBinderMethod;
-static jmethodID createStringArray;
 static jclass deadObjectExceptionClass;
 
 static std::mutex initMutex;
@@ -52,81 +49,122 @@ static bool ensureInit(JNIEnv* env) {
     std::lock_guard<std::mutex> lock(initMutex);
     if (initDone) return true;
 
-    auto serviceManagerClassLocal = env->FindClass("android/os/ServiceManager");
-    if (!serviceManagerClassLocal) {
+    jclass serviceManagerClassTmp = nullptr;
+    jmethodID getServiceMethodTmp = nullptr;
+    jmethodID transactMethodTmp = nullptr;
+    jclass parcelClassTmp = nullptr;
+    jmethodID obtainMethodTmp = nullptr;
+    jmethodID recycleMethodTmp = nullptr;
+    jmethodID writeInterfaceTokenMethodTmp = nullptr;
+    jmethodID writeIntMethodTmp = nullptr;
+    jmethodID readExceptionMethodTmp = nullptr;
+    jmethodID readStrongBinderMethodTmp = nullptr;
+    jclass deadObjectExceptionClassTmp = nullptr;
+
+    jclass localServiceManager = env->FindClass("android/os/ServiceManager");
+    if (!localServiceManager) {
         env->ExceptionClear();
         LOGE("FindClass ServiceManager failed");
         return false;
     }
-    serviceManagerClass = (jclass) env->NewGlobalRef(serviceManagerClassLocal);
-    env->DeleteLocalRef(serviceManagerClassLocal);
-    if (!serviceManagerClass) return false;
 
-    getServiceMethod = env->GetStaticMethodID(
-            serviceManagerClass,
+    serviceManagerClassTmp = (jclass) env->NewGlobalRef(localServiceManager);
+    env->DeleteLocalRef(localServiceManager);
+    if (!serviceManagerClassTmp) {
+        LOGE("NewGlobalRef ServiceManager failed");
+        return false;
+    }
+
+    getServiceMethodTmp = env->GetStaticMethodID(
+            serviceManagerClassTmp,
             "getService",
             "(Ljava/lang/String;)Landroid/os/IBinder;");
-    if (!getServiceMethod) {
+    if (!getServiceMethodTmp) {
         env->ExceptionClear();
-        LOGE("getService method not found");
-        return false;
+        LOGE("ServiceManager.getService not found");
+        goto fail;
     }
 
-    auto iBinderClass = env->FindClass("android/os/IBinder");
-    if (!iBinderClass) {
+    jclass localIBinder = env->FindClass("android/os/IBinder");
+    if (!localIBinder) {
         env->ExceptionClear();
         LOGE("FindClass IBinder failed");
-        return false;
+        goto fail;
     }
-    transactMethod = env->GetMethodID(
-            iBinderClass,
+
+    transactMethodTmp = env->GetMethodID(
+            localIBinder,
             "transact",
             "(ILandroid/os/Parcel;Landroid/os/Parcel;I)Z");
-    env->DeleteLocalRef(iBinderClass);
-    if (!transactMethod) {
+    env->DeleteLocalRef(localIBinder);
+
+    if (!transactMethodTmp) {
         env->ExceptionClear();
-        LOGE("IBinder.transact method not found");
-        return false;
+        LOGE("IBinder.transact not found");
+        goto fail;
     }
 
-    auto parcelClassLocal = env->FindClass("android/os/Parcel");
-    if (!parcelClassLocal) {
+    jclass localParcel = env->FindClass("android/os/Parcel");
+    if (!localParcel) {
         env->ExceptionClear();
         LOGE("FindClass Parcel failed");
-        return false;
+        goto fail;
     }
-    parcelClass = (jclass) env->NewGlobalRef(parcelClassLocal);
-    env->DeleteLocalRef(parcelClassLocal);
-    if (!parcelClass) return false;
 
-    obtainMethod = env->GetStaticMethodID(parcelClass, "obtain", "()Landroid/os/Parcel;");
-    recycleMethod = env->GetMethodID(parcelClass, "recycle", "()V");
-    writeInterfaceTokenMethod = env->GetMethodID(parcelClass, "writeInterfaceToken", "(Ljava/lang/String;)V");
-    writeIntMethod = env->GetMethodID(parcelClass, "writeInt", "(I)V");
-    writeStringMethod = env->GetMethodID(parcelClass, "writeString", "(Ljava/lang/String;)V");
-    readExceptionMethod = env->GetMethodID(parcelClass, "readException", "()V");
-    readStrongBinderMethod = env->GetMethodID(parcelClass, "readStrongBinder", "()Landroid/os/IBinder;");
-    createStringArray = env->GetMethodID(parcelClass, "createStringArray", "()[Ljava/lang/String;");
+    parcelClassTmp = (jclass) env->NewGlobalRef(localParcel);
+    env->DeleteLocalRef(localParcel);
+    if (!parcelClassTmp) {
+        LOGE("NewGlobalRef Parcel failed");
+        goto fail;
+    }
 
-    if (!obtainMethod || !recycleMethod || !writeInterfaceTokenMethod ||
-        !writeIntMethod || !readExceptionMethod || !readStrongBinderMethod ||
-        !writeStringMethod || !createStringArray) {
+    obtainMethodTmp = env->GetStaticMethodID(parcelClassTmp, "obtain", "()Landroid/os/Parcel;");
+    recycleMethodTmp = env->GetMethodID(parcelClassTmp, "recycle", "()V");
+    writeInterfaceTokenMethodTmp =
+            env->GetMethodID(parcelClassTmp, "writeInterfaceToken", "(Ljava/lang/String;)V");
+    writeIntMethodTmp = env->GetMethodID(parcelClassTmp, "writeInt", "(I)V");
+    readExceptionMethodTmp = env->GetMethodID(parcelClassTmp, "readException", "()V");
+    readStrongBinderMethodTmp =
+            env->GetMethodID(parcelClassTmp, "readStrongBinder", "()Landroid/os/IBinder;");
+
+    if (!obtainMethodTmp || !recycleMethodTmp || !writeInterfaceTokenMethodTmp ||
+        !writeIntMethodTmp || !readExceptionMethodTmp || !readStrongBinderMethodTmp) {
         env->ExceptionClear();
         LOGE("Parcel method lookup failed");
-        return false;
+        goto fail;
     }
 
-    auto deadObjectExceptionClassLocal = env->FindClass("android/os/DeadObjectException");
-    if (deadObjectExceptionClassLocal) {
-        deadObjectExceptionClass = (jclass) env->NewGlobalRef(deadObjectExceptionClassLocal);
-        env->DeleteLocalRef(deadObjectExceptionClassLocal);
-    } else {
-        env->ExceptionClear();
-        LOGW("DeadObjectException class not found");
+    {
+        jclass localDeadObject = env->FindClass("android/os/DeadObjectException");
+        if (localDeadObject) {
+            deadObjectExceptionClassTmp = (jclass) env->NewGlobalRef(localDeadObject);
+            env->DeleteLocalRef(localDeadObject);
+        } else {
+            env->ExceptionClear();
+            LOGW("DeadObjectException class not found");
+        }
     }
+
+    serviceManagerClass = serviceManagerClassTmp;
+    getServiceMethod = getServiceMethodTmp;
+    transactMethod = transactMethodTmp;
+    parcelClass = parcelClassTmp;
+    obtainMethod = obtainMethodTmp;
+    recycleMethod = recycleMethodTmp;
+    writeInterfaceTokenMethod = writeInterfaceTokenMethodTmp;
+    writeIntMethod = writeIntMethodTmp;
+    readExceptionMethod = readExceptionMethodTmp;
+    readStrongBinderMethod = readStrongBinderMethodTmp;
+    deadObjectExceptionClass = deadObjectExceptionClassTmp;
 
     initDone = true;
     return true;
+
+fail:
+    if (serviceManagerClassTmp) env->DeleteGlobalRef(serviceManagerClassTmp);
+    if (parcelClassTmp) env->DeleteGlobalRef(parcelClassTmp);
+    if (deadObjectExceptionClassTmp) env->DeleteGlobalRef(deadObjectExceptionClassTmp);
+    return false;
 }
 
 void init(JNIEnv* env) {
@@ -223,8 +261,14 @@ static jobject requireBinder(JNIEnv* env, bool force = false) {
     }
 
 cleanup:
-    if (data) env->CallVoidMethod(data, recycleMethod);
-    if (reply) env->CallVoidMethod(reply, recycleMethod);
+    if (data) {
+        env->CallVoidMethod(data, recycleMethod);
+        if (env->ExceptionCheck()) env->ExceptionClear();
+    }
+    if (reply) {
+        env->CallVoidMethod(reply, recycleMethod);
+        if (env->ExceptionCheck()) env->ExceptionClear();
+    }
 
     if (descriptor) env->DeleteLocalRef(descriptor);
     if (reply) env->DeleteLocalRef(reply);

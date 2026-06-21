@@ -36,12 +36,14 @@ public class BridgeService {
     private static final IBinder.DeathRecipient DEATH_RECIPIENT_ROOT = () -> {
         rootServiceBinder = null;
         rootService = null;
+        rootServerPid = -1;
         serviceStarted = false;
         LOGGER.i("root service is dead");
     };
     private static final IBinder.DeathRecipient DEATH_RECIPIENT_SHELL = () -> {
         shellServiceBinder = null;
         shellService = null;
+        shellServerPid = -1;
         LOGGER.i("shell service is dead");
     };
 
@@ -50,6 +52,8 @@ public class BridgeService {
     private static volatile IBinder shellServiceBinder;
     private static IShizukuService shellService;
     private static volatile boolean serviceStarted;
+    private static volatile int rootServerPid = -1;
+    private static volatile int shellServerPid = -1;
 
     public static IShizukuService get() {
         return rootService;
@@ -132,14 +136,24 @@ public class BridgeService {
         switch (action) {
             case BridgeConstants.ACTION_SEND_BINDER: {
                 int callingUid = Binder.getCallingUid();
+                int callingPid = Binder.getCallingPid();
+
                 if (callingUid == 0 || callingUid == 2000) {
                     IBinder binder = data.readStrongBinder();
+
                     long identity = Binder.clearCallingIdentity();
                     try {
                         sendBinder(binder, callingUid == 0);
+
+                        if (callingUid == 0) {
+                            rootServerPid = callingPid;
+                        } else {
+                            shellServerPid = callingPid;
+                        }
                     } finally {
                         Binder.restoreCallingIdentity(identity);
                     }
+
                     if (reply != null) {
                         reply.writeNoException();
                     }
@@ -149,27 +163,27 @@ public class BridgeService {
             }
             case BridgeConstants.ACTION_GET_BINDER: {
                 int callingUid = Binder.getCallingUid();
-                int targetUid = callingUid;
+                int callingPid = Binder.getCallingPid();
+
                 Integer requestedServerUid = null;
-                String token = null;
 
                 if ((callingUid == 0 || callingUid == 2000) && data.dataAvail() >= Integer.BYTES) {
                     int value = data.readInt();
                     if (value == BridgeConstants.SERVER_UID_ROOT || value == BridgeConstants.SERVER_UID_SHELL) {
                         requestedServerUid = value;
                     }
-                    if (data.dataAvail() > 0) {
-                        token = data.readString();
-                    }
                 }
 
-                int permissionFlags = Bridge.getPermissionFlags(targetUid);
                 IBinder requestedBinder = null;
 
                 if (requestedServerUid != null) {
-                    if (!isTrustedServerDelegate(callingUid, Binder.getCallingPid(), requestedServerUid, token)) {
-                        LOGGER.w("reject server binder request: uid=%d pid=%d target=%d",
-                                callingUid, Binder.getCallingPid(), requestedServerUid);
+                    if (!isTrustedServerDelegate(callingUid, callingPid, requestedServerUid)) {
+                        LOGGER.w(
+                                "reject server binder request: uid=%d pid=%d target=%d",
+                                callingUid,
+                                callingPid,
+                                requestedServerUid);
+
                         if (reply != null) {
                             reply.writeNoException();
                             reply.writeStrongBinder(null);
@@ -180,16 +194,28 @@ public class BridgeService {
                     requestedBinder = requestedServerUid == BridgeConstants.SERVER_UID_ROOT
                             ? rootServiceBinder
                             : shellServiceBinder;
-                } else if ((permissionFlags & SuiConfig.FLAG_HIDDEN) != 0) {
-                    return false;
-                } else if ((permissionFlags & SuiConfig.FLAG_DENIED) != 0) {
-                    requestedBinder = new RestrictedBridgeBinder(RestrictedBridgeBinder.MODE_DENY);
-                } else if ((permissionFlags & SuiConfig.FLAG_ALLOWED) != 0) {
-                    requestedBinder = rootServiceBinder;
-                } else if ((permissionFlags & SuiConfig.FLAG_ALLOWED_SHELL) != 0) {
-                    requestedBinder = shellServiceBinder;
+
                 } else {
-                    requestedBinder = new RestrictedBridgeBinder(RestrictedBridgeBinder.MODE_ASK);
+                    int permissionFlags = Bridge.getPermissionFlags(callingUid);
+
+                    if ((permissionFlags & SuiConfig.FLAG_HIDDEN) != 0) {
+                        return false;
+                    }
+
+                    if ((permissionFlags & SuiConfig.FLAG_DENIED) != 0) {
+                        requestedBinder = null;
+
+                    } else if ((permissionFlags & SuiConfig.FLAG_ALLOWED_SHELL) != 0) {
+                        requestedBinder = shellServiceBinder;
+
+                    } else {
+                        /*
+                         * ASK 或 ROOT allowed/default:
+                         * 返回 root binder，保持原始 app -> root service 的 Binder 调用身份。
+                         * root service 内部继续限制未授权 app 只能走 attach/requestPermission。
+                         */
+                        requestedBinder = rootServiceBinder;
+                    }
                 }
 
                 if (reply != null) {
@@ -236,61 +262,18 @@ public class BridgeService {
         return false;
     }
 
-    private static volatile String shellDelegateToken;
-
-    private boolean isTrustedServerDelegate(int uid, int pid, int requestedServerUid, @Nullable String token) {
-        if (uid == 0) return true;
-
-        if (uid == 2000 && requestedServerUid == BridgeConstants.SERVER_UID_ROOT) {
-            return token != null && token.equals(shellDelegateToken) && isKnownShellServerPid(pid);
+    private boolean isTrustedServerDelegate(int uid, int pid, int requestedServerUid) {
+        if (uid == 0) {
+            return pid > 0 && pid == rootServerPid;
         }
 
-        if (uid == 2000 && requestedServerUid == BridgeConstants.SERVER_UID_SHELL) {
-            return isKnownShellServerPid(pid);
+        if (uid == 2000) {
+            return pid > 0
+                    && pid == shellServerPid
+                    && (requestedServerUid == BridgeConstants.SERVER_UID_ROOT
+                            || requestedServerUid == BridgeConstants.SERVER_UID_SHELL);
         }
 
         return false;
-    }
-
-    private boolean isKnownShellServerPid(int pid) {
-        return true;
-    }
-
-    private static final class RestrictedBridgeBinder extends Binder {
-        static final int MODE_ASK = 1;
-        static final int MODE_DENY = 2;
-
-        private final int mode;
-
-        RestrictedBridgeBinder(int mode) {
-            this.mode = mode;
-        }
-
-        @Override
-        protected boolean onTransact(int code, @NonNull Parcel data, @Nullable Parcel reply, int flags) throws RemoteException {
-            if (mode == MODE_DENY) {
-                if (reply != null) {
-                    reply.writeException(new SecurityException("Sui permission denied"));
-                }
-                return true;
-            }
-
-            if (mode == MODE_ASK) {
-                if (code == moe.shizuku.server.IShizukuService.Stub.TRANSACTION_attachApplication
-                        || code == moe.shizuku.server.IShizukuService.Stub.TRANSACTION_requestPermission) {
-                    IBinder root = BridgeService.get().asBinder();
-                    if (root != null) {
-                        return root.transact(code, data, reply, flags);
-                    }
-                }
-
-                if (reply != null) {
-                    reply.writeException(new SecurityException("Permission not granted yet"));
-                }
-                return true;
-            }
-
-            return false;
-        }
     }
 }

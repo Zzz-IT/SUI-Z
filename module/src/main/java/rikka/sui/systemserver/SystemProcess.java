@@ -33,11 +33,34 @@ import rikka.sui.util.ParcelUtils;
 public final class SystemProcess {
 
     private static final BridgeService SERVICE = new BridgeService();
-    private static volatile int[] hiddenUids = new int[0];
-    private static volatile int[] rootUids = new int[0];
-    private static volatile int[] deniedUids = new int[0];
-    private static volatile int[] shellUids = new int[0];
-    private static volatile int defaultPermissionFlags = 0;
+
+    private static final class PermissionSnapshot {
+        final int[] hiddenUids;
+        final int[] rootUids;
+        final int[] deniedUids;
+        final int[] shellUids;
+        final int defaultPermissionFlags;
+
+        PermissionSnapshot(
+                int[] hiddenUids,
+                int[] rootUids,
+                int[] deniedUids,
+                int[] shellUids,
+                int defaultPermissionFlags) {
+            this.hiddenUids = hiddenUids;
+            this.rootUids = rootUids;
+            this.deniedUids = deniedUids;
+            this.shellUids = shellUids;
+            this.defaultPermissionFlags = defaultPermissionFlags;
+        }
+
+        static PermissionSnapshot empty() {
+            return new PermissionSnapshot(new int[0], new int[0], new int[0], new int[0], 0);
+        }
+    }
+
+    private static final java.util.concurrent.atomic.AtomicReference<PermissionSnapshot> snapshot =
+            new java.util.concurrent.atomic.AtomicReference<>(PermissionSnapshot.empty());
 
     private static boolean execActivityTransaction(
             @NonNull Binder binder, int code, Parcel data, Parcel reply, int flags) {
@@ -101,45 +124,61 @@ public final class SystemProcess {
         }
     }
 
+    private static int[] normalize(int[] input) {
+        if (input == null || input.length == 0) {
+            return new int[0];
+        }
+        int[] copy = input.clone();
+        Arrays.sort(copy);
+        return copy;
+    }
+
     public static void updateUids(int[] hidden, int[] root, int[] denied, int[] shell, int defaultFlags) {
-        if (hidden == null) hidden = new int[0];
-        if (root == null) root = new int[0];
-        if (denied == null) denied = new int[0];
-        if (shell == null) shell = new int[0];
+        int[] hiddenCopy = normalize(hidden);
+        int[] rootCopy = normalize(root);
+        int[] deniedCopy = normalize(denied);
+        int[] shellCopy = normalize(shell);
 
-        Arrays.sort(hidden);
-        Arrays.sort(root);
-        Arrays.sort(denied);
-        Arrays.sort(shell);
+        PermissionSnapshot next = new PermissionSnapshot(
+                hiddenCopy,
+                rootCopy,
+                deniedCopy,
+                shellCopy,
+                defaultFlags & SuiConfig.MASK_PERMISSION);
 
-        hiddenUids = hidden;
-        rootUids = root;
-        deniedUids = denied;
-        shellUids = shell;
-        defaultPermissionFlags = defaultFlags & SuiConfig.MASK_PERMISSION;
+        snapshot.set(next);
 
         LOGGER.d(
                 "syncing %d hidden, %d root, %d denied, %d shell uids to native, defaultFlags=%d",
-                hidden.length, root.length, denied.length, shell.length, defaultPermissionFlags);
-        setHiddenUids(hidden);
+                hiddenCopy.length,
+                rootCopy.length,
+                deniedCopy.length,
+                shellCopy.length,
+                next.defaultPermissionFlags);
+
+        setHiddenUids(hiddenCopy);
     }
 
     public static boolean isHidden(int uid) {
-        int[] uids = hiddenUids;
-        return Arrays.binarySearch(uids, uid) >= 0;
+        PermissionSnapshot s = snapshot.get();
+        return Arrays.binarySearch(s.hiddenUids, uid) >= 0;
     }
 
     public static int getEffectivePermissionFlags(int uid) {
-        int flags = defaultPermissionFlags;
-        if (isHidden(uid)) {
-            flags = (flags & ~SuiConfig.MASK_PERMISSION) | SuiConfig.FLAG_HIDDEN;
-        } else if (isDenied(uid)) {
-            flags = (flags & ~SuiConfig.MASK_PERMISSION) | SuiConfig.FLAG_DENIED;
-        } else if (isRootAllowed(uid)) {
-            flags = (flags & ~SuiConfig.MASK_PERMISSION) | SuiConfig.FLAG_ALLOWED;
-        } else if (isShellAllowed(uid)) {
-            flags = (flags & ~SuiConfig.MASK_PERMISSION) | SuiConfig.FLAG_ALLOWED_SHELL;
+        PermissionSnapshot s = snapshot.get();
+
+        int flags = s.defaultPermissionFlags;
+
+        if (Arrays.binarySearch(s.hiddenUids, uid) >= 0) {
+            flags = SuiConfig.FLAG_HIDDEN;
+        } else if (Arrays.binarySearch(s.deniedUids, uid) >= 0) {
+            flags = SuiConfig.FLAG_DENIED;
+        } else if (Arrays.binarySearch(s.rootUids, uid) >= 0) {
+            flags = SuiConfig.FLAG_ALLOWED;
+        } else if (Arrays.binarySearch(s.shellUids, uid) >= 0) {
+            flags = SuiConfig.FLAG_ALLOWED_SHELL;
         }
+
         return flags & SuiConfig.MASK_PERMISSION;
     }
 
@@ -148,22 +187,22 @@ public final class SystemProcess {
     }
 
     public static boolean isRootAllowed(int uid) {
-        int[] uids = rootUids;
-        return Arrays.binarySearch(uids, uid) >= 0;
+        PermissionSnapshot s = snapshot.get();
+        return Arrays.binarySearch(s.rootUids, uid) >= 0;
     }
 
     public static boolean isShellAllowed(int uid) {
-        int[] uids = shellUids;
-        return Arrays.binarySearch(uids, uid) >= 0;
+        PermissionSnapshot s = snapshot.get();
+        return Arrays.binarySearch(s.shellUids, uid) >= 0;
     }
 
     public static boolean isDenied(int uid) {
-        int[] uids = deniedUids;
-        return Arrays.binarySearch(uids, uid) >= 0;
+        PermissionSnapshot s = snapshot.get();
+        return Arrays.binarySearch(s.deniedUids, uid) >= 0;
     }
 
     public static int getDefaultPermissionFlags() {
-        return defaultPermissionFlags;
+        return snapshot.get().defaultPermissionFlags;
     }
 
     @Keep

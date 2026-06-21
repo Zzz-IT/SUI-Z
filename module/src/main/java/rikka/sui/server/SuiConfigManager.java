@@ -182,39 +182,67 @@ public class SuiConfigManager extends ConfigManager {
     }
 
     private void reloadShellConfigFromFile() {
-        try {
-            java.io.File file = getShellConfigFile();
-            if (!file.exists()) return;
-            try (java.io.BufferedReader br = new java.io.BufferedReader(new java.io.FileReader(file))) {
-                String line;
-                synchronized (this) {
-                    config.packages.clear();
-                    while ((line = br.readLine()) != null) {
-                        String[] parts = line.split(":");
-                        if (parts.length == 2) {
-                            int uid = Integer.parseInt(parts[0]);
-                            int flags = Integer.parseInt(parts[1]);
-                            config.packages.add(new SuiConfig.PackageEntry(uid, flags));
-                        }
-                    }
-                    rebuildPackageIndexLocked();
-                    invalidateUidCacheLocked();
+        File file = getShellConfigFile();
+        if (!file.exists()) {
+            return;
+        }
+
+        List<SuiConfig.PackageEntry> parsed = new ArrayList<>();
+
+        try (BufferedReader br = new BufferedReader(new FileReader(file))) {
+            String line;
+            int lineNo = 0;
+
+            while ((line = br.readLine()) != null) {
+                lineNo++;
+                line = line.trim();
+
+                if (line.isEmpty()) {
+                    continue;
                 }
+
+                String[] parts = line.split(":");
+                if (parts.length != 2) {
+                    throw new IOException("bad shell config line " + lineNo + ": " + line);
+                }
+
+                int uid = Integer.parseInt(parts[0]);
+                int flags = Integer.parseInt(parts[1]) & SuiConfig.MASK_PERMISSION;
+
+                if (uid < 10000 && uid != 1000 && uid != 2000) {
+                    LOGGER.w("ignore invalid uid in shell config: %d", uid);
+                    continue;
+                }
+
+                parsed.add(new SuiConfig.PackageEntry(uid, flags));
             }
 
-            SuiService service = SuiService.getInstance();
-            if (service != null && service.getClientManager() != null) {
-                for (rikka.shizuku.server.ClientRecord record :
-                        service.getClientManager().getClients()) {
-                    SuiConfig.PackageEntry entry = find(record.uid);
-                    boolean allowed = entry != null
-                            && ((entry.flags & (SuiConfig.FLAG_ALLOWED | SuiConfig.FLAG_ALLOWED_SHELL)) != 0);
-                    record.allowed = allowed;
-                }
+            synchronized (this) {
+                config.packages.clear();
+                config.packages.addAll(parsed);
+                rebuildPackageIndexLocked();
+                invalidateUidCacheLocked();
             }
-            LOGGER.i("Shell server reloaded config, apps: " + config.packages.size());
+
+            refreshClientAllowedStateAfterShellReload();
+            LOGGER.i("Shell server reloaded config, apps: %d", parsed.size());
+
         } catch (Throwable e) {
-            LOGGER.e(e, "reload shell config");
+            LOGGER.e(e, "reload shell config failed, keep previous config");
+        }
+    }
+
+    private void refreshClientAllowedStateAfterShellReload() {
+        SuiService service = SuiService.getInstance();
+        if (service == null || service.getClientManager() == null) {
+            return;
+        }
+
+        for (rikka.shizuku.server.ClientRecord record : service.getClientManager().getClients()) {
+            SuiConfig.PackageEntry entry = find(record.uid);
+            boolean allowed = entry != null
+                    && ((entry.flags & (SuiConfig.FLAG_ALLOWED | SuiConfig.FLAG_ALLOWED_SHELL)) != 0);
+            record.allowed = allowed;
         }
     }
 
@@ -240,14 +268,39 @@ public class SuiConfigManager extends ConfigManager {
             try (java.io.FileOutputStream fos = new java.io.FileOutputStream(tempFile)) {
                 fos.write(sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 fos.getFD().sync();
-                fos.close();
-                if (tempFile.renameTo(file)) {
-                    android.system.Os.chmod(file.getAbsolutePath(), 0644);
-                }
+            }
+
+            if (tempFile.renameTo(file)) {
+                android.system.Os.chmod(file.getAbsolutePath(), 0644);
+            } else {
+                LOGGER.w("rename shell config temp file failed: %s -> %s", tempFile, file);
             }
         } catch (Throwable e) {
             LOGGER.e(e, "sync uids to shell");
         }
+    }
+
+    public void syncUidsToShellFileAsync(@Nullable Runnable afterSync) {
+        if (SuiService.isShellMode()) {
+            return;
+        }
+
+        SHELL_SYNC_HANDLER.removeCallbacks(syncUidsToShellFileRunnable);
+        SHELL_SYNC_HANDLER.post(() -> {
+            try {
+                syncUidsToShellFile();
+            } catch (Throwable e) {
+                LOGGER.w(e, "syncUidsToShellFileAsync error");
+            } finally {
+                if (afterSync != null) {
+                    try {
+                        afterSync.run();
+                    } catch (Throwable e) {
+                        LOGGER.w(e, "after shell sync callback failed");
+                    }
+                }
+            }
+        });
     }
 
     public void syncUidsToShellFileNow() {

@@ -30,6 +30,69 @@ using namespace std::literals::string_view_literals;
 static constexpr char kSuiAdbdRootSeclabelEnv[] = "SUI_ADBD_ROOT_SECLABEL";
 static constexpr auto kRootSeclabelArgPrefix = "--root_seclabel="sv;
 
+static bool is_valid_seclabel(const char* s) {
+    if (!s) return false;
+
+    constexpr const char* prefix = "u:r:";
+    constexpr const char* suffix = ":s0";
+
+    size_t prefix_len = strlen(prefix);
+    if (strncmp(s, prefix, prefix_len) != 0) {
+        return false;
+    }
+
+    const char* domain = s + prefix_len;
+    if (*domain == '\0') {
+        return false;
+    }
+
+    const char* suffix_pos = strstr(domain, suffix);
+    if (!suffix_pos) {
+        return false;
+    }
+
+    if (suffix_pos == domain) {
+        return false;
+    }
+
+    for (const char* p = domain; p < suffix_pos; ++p) {
+        char c = *p;
+        bool ok = (c >= 'a' && c <= 'z')
+                || (c >= 'A' && c <= 'Z')
+                || (c >= '0' && c <= '9')
+                || c == '_';
+        if (!ok) {
+            return false;
+        }
+    }
+
+    const char* tail = suffix_pos + strlen(suffix);
+    if (*tail == '\0') {
+        return true;
+    }
+
+    if (*tail != ':') {
+        return false;
+    }
+
+    for (++tail; *tail; ++tail) {
+        char c = *tail;
+        bool ok = (c >= 'a' && c <= 'z')
+                || (c >= 'A' && c <= 'Z')
+                || (c >= '0' && c <= '9')
+                || c == '_'
+                || c == ':'
+                || c == ','
+                || c == '.'
+                || c == '-';
+        if (!ok) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 int main(int argc, char** argv) {
     const char* adbd_ld_preload;
     const char* adbd_real;
@@ -38,6 +101,11 @@ int main(int argc, char** argv) {
     if (FILE* fp = fopen("/data/adb/sui/seclabel", "re")) {
         if (fgets(root_seclabel_value, sizeof(root_seclabel_value), fp)) {
             root_seclabel_value[strcspn(root_seclabel_value, "\r\n")] = '\0';
+
+            if (!is_valid_seclabel(root_seclabel_value)) {
+                LOGW("invalid seclabel %s, fallback to u:r:su:s0", root_seclabel_value);
+                strcpy(root_seclabel_value, "u:r:su:s0");
+            }
         }
         fclose(fp);
     } else {

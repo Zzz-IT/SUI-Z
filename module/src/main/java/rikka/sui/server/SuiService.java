@@ -80,6 +80,26 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
     private static boolean shellMode = false;
     private final java.util.concurrent.ConcurrentHashMap<String, DelegatedPermissionCallback>
             delegatedPermissionCallbacks = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.concurrent.ExecutorService uidSyncExecutor =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "SuiUidSync");
+                t.setDaemon(true);
+                return t;
+            });
+    private final java.util.concurrent.atomic.AtomicLong uidSyncVersion =
+            new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.ConcurrentHashMap<Integer, Long> lastInvalidationTime =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private boolean shouldInvalidateUid(int uid) {
+        long now = System.currentTimeMillis();
+        Long last = lastInvalidationTime.get(uid);
+        if (last != null && now - last < 2000) {
+            return false;
+        }
+        lastInvalidationTime.put(uid, now);
+        return true;
+    }
 
     public static SuiService getInstance() {
         return instance;
@@ -392,22 +412,28 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
         int[] shellUids = configManager.getShellUids();
         int defaultFlags = configManager.getDefaultPermissionFlags();
 
-        new Thread(() -> {
+        long version = uidSyncVersion.incrementAndGet();
+
+        uidSyncExecutor.execute(() -> {
+            if (version != uidSyncVersion.get()) {
+                return;
+            }
+
             BridgeServiceClient.syncUids(
                     hiddenUids,
                     rootUids,
                     deniedUids,
                     shellUids,
                     defaultFlags);
-        }, "SyncUidsThread").start();
+        });
     }
 
     private void flushShellRoutingState() {
         if (shellMode) {
             return;
         }
-        configManager.syncUidsToShellFileNow();
-        reloadShellServerConfig();
+
+        configManager.syncUidsToShellFileAsync(this::reloadShellServerConfig);
     }
 
     private final class DelegatedPermissionCallback implements IBinder.DeathRecipient, Runnable {
@@ -473,12 +499,14 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
         mainHandler.postDelayed(callback, DELEGATED_PERMISSION_CALLBACK_TIMEOUT_MS);
     }
 
-    private int waitForPackage(String packageName, boolean forever) {
-        return waitForPackage(new String[] {packageName}, forever);
+    private int waitForPackage(String packageName, long timeoutMs) {
+        return waitForPackage(new String[] {packageName}, timeoutMs);
     }
 
-    private int waitForPackage(String[] packageNames, boolean forever) {
-        while (true) {
+    private int waitForPackage(String[] packageNames, long timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+
+        while (System.currentTimeMillis() < deadline) {
             for (String packageName : packageNames) {
                 ApplicationInfo ai = PackageManagerApis.getApplicationInfoNoThrow(packageName, 0, 0);
                 if (ai != null) {
@@ -489,14 +517,16 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
 
             LOGGER.w("can't find %s, wait 1s", java.util.Arrays.toString(packageNames));
 
-            if (!forever) return -1;
-
             try {
-                //noinspection BusyWait
                 Thread.sleep(1000);
-            } catch (InterruptedException ignored) {
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return -1;
             }
         }
+
+        LOGGER.w("can't find %s after %d ms", java.util.Arrays.toString(packageNames), timeoutMs);
+        return -1;
     }
 
     private static boolean isSettingsPackageName(String packageName) {
@@ -510,12 +540,21 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
 
     private int[] getRootUidsWithSystem() {
         int[] rootUids = configManager.getRootUids();
-        int[] result = new int[rootUids.length + 3];
-        System.arraycopy(rootUids, 0, result, 0, rootUids.length);
-        result[rootUids.length] = systemUiUid;
-        result[rootUids.length + 1] = settingsUid;
-        result[rootUids.length + 2] = 1000;
-        return result;
+        java.util.ArrayList<Integer> result = new java.util.ArrayList<>();
+
+        for (int uid : rootUids) {
+            result.add(uid);
+        }
+
+        if (systemUiUid > 0) result.add(systemUiUid);
+        if (settingsUid > 0) result.add(settingsUid);
+        result.add(1000);
+
+        int[] array = new int[result.size()];
+        for (int i = 0; i < result.size(); i++) {
+            array[i] = result.get(i);
+        }
+        return array;
     }
 
     private final Runnable registerTask = new Runnable() {
@@ -563,12 +602,12 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
         clientManager = getClientManager();
         userServiceManager = getUserServiceManager();
 
-        systemUiUid = waitForPackage(MANAGER_APPLICATION_ID, true);
-        settingsUid = waitForPackage(SettingsPackages.SETTINGS_CANDIDATES, true);
+        systemUiUid = waitForPackage(MANAGER_APPLICATION_ID, 30_000);
+        settingsUid = waitForPackage(SettingsPackages.SETTINGS_CANDIDATES, 30_000);
 
         // Skip root-only setup when running as shell server
         if (!shellMode) {
-            int gmsUid = waitForPackage("com.google.android.gms", false);
+            int gmsUid = waitForPackage(new String[] {"com.google.android.gms"}, 0);
             if (gmsUid > 0) {
                 configManager.update(gmsUid, SuiConfig.MASK_PERMISSION, SuiConfig.FLAG_HIDDEN);
             }
@@ -594,7 +633,8 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
 
     @Override
     public boolean checkCallerManagerPermission(String func, int callingUid, int callingPid) {
-        return callingUid == settingsUid || callingUid == systemUiUid;
+        return (systemUiUid > 0 && callingUid == systemUiUid)
+                || (settingsUid > 0 && callingUid == settingsUid);
     }
 
     @Override
@@ -808,7 +848,9 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
             }
 
             if (newEffectiveFlags != oldEffectiveFlags) {
-                invalidatePackagesForUid(uid, false, "Permission changed");
+                if (shouldInvalidateUid(uid)) {
+                    invalidatePackagesForUid(uid, false, "Permission changed");
+                }
             }
 
             if (!shellMode
@@ -1059,6 +1101,21 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
             int reqPid = data.readInt();
             android.os.IBinder callback = data.readStrongBinder();
 
+            if (reqUid < 10000) {
+                LOGGER.w("requestPermissionFromShell rejected: invalid app uid %d", reqUid);
+                return false;
+            }
+
+            if (requestCode < 0) {
+                LOGGER.w("requestPermissionFromShell rejected: invalid requestCode %d", requestCode);
+                return false;
+            }
+
+            if (callback == null) {
+                LOGGER.w("requestPermissionFromShell rejected: callback is null");
+                return false;
+            }
+
             List<String> packages = PackageManagerApis.getPackagesForUidNoThrow(reqUid);
             if (packageName == null || !packages.contains(packageName)) {
                 LOGGER.w(
@@ -1073,9 +1130,7 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
             }
 
             String key = buildPermissionRequestKey(reqUid, reqPid, requestCode);
-            if (callback != null) {
-                putDelegatedPermissionCallback(key, callback);
-            }
+            putDelegatedPermissionCallback(key, callback);
 
             int userId = UserHandleCompat.getUserId(reqUid);
             ClientRecord dummy = new ClientRecord(reqUid, reqPid, null, packageName, -1);
