@@ -38,6 +38,9 @@ public class BridgeServiceClient {
     private static int remainingRestart = MAX_ZYGOTE_RESTART;
     private static boolean systemServerRequested = false;
 
+    private static final String ROOT_REGISTER_TOKEN = java.util.UUID.randomUUID().toString();
+    private static final String SHELL_REGISTER_TOKEN = java.util.UUID.randomUUID().toString();
+
     private static final android.os.HandlerThread BRIDGE_THREAD =
             new android.os.HandlerThread("SuiBridgeRegister");
 
@@ -140,6 +143,10 @@ public class BridgeServiceClient {
             return;
         }
 
+        if (!SuiService.isShellMode()) {
+            registerBridgeTokens(bridgeService);
+        }
+
         sendBinderToBridgeAsync(bridgeService, 0, isRestart);
     }
 
@@ -149,9 +156,16 @@ public class BridgeServiceClient {
 
         boolean res = false;
         try {
+            String token = SuiService.isShellMode()
+                    ? rikka.sui.server.SuiConfigManager.getInstance().readBridgeTokenFromShellFile()
+                    : ROOT_REGISTER_TOKEN;
+
             data.writeInterfaceToken(BridgeConstants.SERVICE_DESCRIPTOR);
             data.writeInt(BridgeConstants.ACTION_SEND_BINDER);
             data.writeStrongBinder(SuiService.getInstance());
+            if (token != null) {
+                data.writeString(token);
+            }
 
             res = bridgeService.transact(BridgeConstants.TRANSACTION_CODE, data, reply, 0);
             reply.readException();
@@ -207,6 +221,31 @@ public class BridgeServiceClient {
     public static void send(Listener listener) {
         BridgeServiceClient.listener = listener;
         BRIDGE_HANDLER.post(() -> sendToBridgeOnce(false, 0));
+    }
+
+    private static void registerBridgeTokens(IBinder bridgeService) {
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+
+        try {
+            data.writeInterfaceToken(BridgeConstants.SERVICE_DESCRIPTOR);
+            data.writeInt(BridgeConstants.ACTION_REGISTER_TOKEN);
+            data.writeString(ROOT_REGISTER_TOKEN);
+            data.writeString(SHELL_REGISTER_TOKEN);
+
+            bridgeService.transact(BridgeConstants.TRANSACTION_CODE, data, reply, 0);
+            reply.readException();
+            LOGGER.i("bridge tokens registered");
+        } catch (Throwable e) {
+            LOGGER.w(e, "register bridge tokens");
+        } finally {
+            data.recycle();
+            reply.recycle();
+        }
+    }
+
+    public static String getShellRegisterToken() {
+        return SHELL_REGISTER_TOKEN;
     }
 
     public static void notifyStarted() {

@@ -36,12 +36,14 @@ public class BridgeService {
     private static final IBinder.DeathRecipient DEATH_RECIPIENT_ROOT = () -> {
         rootServiceBinder = null;
         rootServerPid = -1;
+        rootRegisterToken = null;
         serviceStarted = false;
         LOGGER.i("root service is dead");
     };
     private static final IBinder.DeathRecipient DEATH_RECIPIENT_SHELL = () -> {
         shellServiceBinder = null;
         shellServerPid = -1;
+        shellRegisterToken = null;
         LOGGER.i("shell service is dead");
     };
 
@@ -50,6 +52,8 @@ public class BridgeService {
     private static volatile boolean serviceStarted;
     private static volatile int rootServerPid = -1;
     private static volatile int shellServerPid = -1;
+    private static volatile String rootRegisterToken;
+    private static volatile String shellRegisterToken;
 
     public static IShizukuService get() {
         IBinder binder = rootServiceBinder;
@@ -139,6 +143,19 @@ public class BridgeService {
                 if (callingUid == 0 || callingUid == 2000) {
                     IBinder binder = data.readStrongBinder();
 
+                    String token = null;
+                    if (data.dataAvail() > 0) {
+                        token = data.readString();
+                    }
+
+                    if (!isRegisterTokenAllowed(callingUid, token)) {
+                        LOGGER.w("reject binder registration: invalid token uid=%d pid=%d", callingUid, callingPid);
+                        if (reply != null) {
+                            reply.writeNoException();
+                        }
+                        return true;
+                    }
+
                     boolean ok;
                     long identity = Binder.clearCallingIdentity();
                     try {
@@ -181,10 +198,15 @@ public class BridgeService {
                     }
                 }
 
+                String delegateToken = null;
+                if (requestedServerUid != null && data.dataAvail() > 0) {
+                    delegateToken = data.readString();
+                }
+
                 IBinder requestedBinder = null;
 
                 if (requestedServerUid != null) {
-                    if (!isTrustedServerDelegate(callingUid, callingPid, requestedServerUid)) {
+                    if (!isTrustedServerDelegate(callingUid, callingPid, requestedServerUid, delegateToken)) {
                         LOGGER.w(
                                 "reject server binder request: uid=%d pid=%d target=%d",
                                 callingUid,
@@ -216,11 +238,6 @@ public class BridgeService {
                         requestedBinder = shellServiceBinder;
 
                     } else {
-                        /*
-                         * ASK 或 ROOT allowed/default:
-                         * 返回 root binder，保持原始 app -> root service 的 Binder 调用身份。
-                         * root service 内部继续限制未授权 app 只能走 attach/requestPermission。
-                         */
                         requestedBinder = rootServiceBinder;
                     }
                 }
@@ -265,22 +282,76 @@ public class BridgeService {
                 }
                 break;
             }
+            case BridgeConstants.ACTION_REGISTER_TOKEN: {
+                int callingUid = Binder.getCallingUid();
+                int callingPid = Binder.getCallingPid();
+
+                if (callingUid != 0) {
+                    LOGGER.w("reject token registration from uid=%d pid=%d", callingUid, callingPid);
+                    if (reply != null) {
+                        reply.writeNoException();
+                    }
+                    return true;
+                }
+
+                String rToken = data.readString();
+                String sToken = data.readString();
+
+                if (!isValidToken(rToken) || !isValidToken(sToken)) {
+                    LOGGER.w("reject invalid bridge tokens");
+                    if (reply != null) {
+                        reply.writeNoException();
+                    }
+                    return true;
+                }
+
+                rootRegisterToken = rToken;
+                shellRegisterToken = sToken;
+
+                LOGGER.i("bridge tokens registered by root pid=%d", callingPid);
+
+                if (reply != null) {
+                    reply.writeNoException();
+                }
+                return true;
+            }
         }
         return false;
     }
 
-    private boolean isTrustedServerDelegate(int uid, int pid, int requestedServerUid) {
+    private boolean isTrustedServerDelegate(int uid, int pid, int requestedServerUid, @Nullable String token) {
         if (uid == 0) {
-            return pid > 0 && pid == rootServerPid;
+            return pid > 0
+                    && pid == rootServerPid
+                    && rootRegisterToken != null
+                    && rootRegisterToken.equals(token);
         }
 
         if (uid == 2000) {
             return pid > 0
                     && pid == shellServerPid
+                    && shellRegisterToken != null
+                    && shellRegisterToken.equals(token)
                     && (requestedServerUid == BridgeConstants.SERVER_UID_ROOT
                             || requestedServerUid == BridgeConstants.SERVER_UID_SHELL);
         }
 
         return false;
+    }
+
+    private static boolean isRegisterTokenAllowed(int uid, @Nullable String token) {
+        if (uid == 0) {
+            return rootRegisterToken == null || rootRegisterToken.equals(token);
+        }
+
+        if (uid == 2000) {
+            return shellRegisterToken != null && shellRegisterToken.equals(token);
+        }
+
+        return false;
+    }
+
+    private static boolean isValidToken(@Nullable String token) {
+        return token != null && token.length() >= 32 && token.length() <= 128;
     }
 }

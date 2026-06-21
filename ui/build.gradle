@@ -24,7 +24,7 @@ plugins {
 apply from: "$rootDir/module.gradle"
 
 android {
-    namespace = "rikka.SUI Z"
+    namespace = "rikka.sui"
 
     defaultConfig {
         minSdk = 23
@@ -60,7 +60,8 @@ android {
     }
 
     lint {
-        checkReleaseBuilds = false
+        checkReleaseBuilds = true
+        abortOnError = true
     }
 
     dependenciesInfo {

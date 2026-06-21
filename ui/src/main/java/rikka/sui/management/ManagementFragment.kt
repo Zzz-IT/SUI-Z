@@ -16,7 +16,7 @@
  *
  * Copyright (c) 2021-2026 SUI Z Contributors
  */
-package rikka.SUI Z.management
+package rikka.sui.management
 
 import android.content.res.Configuration
 import android.graphics.Typeface
@@ -56,22 +56,22 @@ import me.zhanghai.android.fastscroll.FastScrollerBuilder
 import rikka.lifecycle.Resource
 import rikka.lifecycle.Status
 import rikka.lifecycle.viewModels
-import rikka.SUI Z.BuildConfig
-import rikka.SUI Z.R
-import rikka.SUI Z.app.AppFragment
-import rikka.SUI Z.databinding.ManagementBinding
-import rikka.SUI Z.ktx.resolveColor
-import rikka.SUI Z.model.AppInfo
-import rikka.SUI Z.server.SUI ZConfig
-import rikka.SUI Z.util.BridgeServiceClient
-import rikka.SUI Z.util.MiuixBounceEdgeEffectFactory
-import rikka.SUI Z.util.MiuixPopupDimOverlay
-import rikka.SUI Z.util.MiuixPressHelper
-import rikka.SUI Z.util.MiuixPullToRefreshView
-import rikka.SUI Z.util.MiuixSmoothCardDrawable
-import rikka.SUI Z.util.MiuixSquircleUtils
-import rikka.SUI Z.util.applyMiuixPopupStyle
-import rikka.SUI Z.widget.MiuixBottomSheetDialog
+import rikka.sui.BuildConfig
+import rikka.sui.R
+import rikka.sui.app.AppFragment
+import rikka.sui.databinding.ManagementBinding
+import rikka.sui.ktx.resolveColor
+import rikka.sui.model.AppInfo
+import rikka.sui.server.SuiConfig
+import rikka.sui.util.BridgeServiceClient
+import rikka.sui.util.MiuixBounceEdgeEffectFactory
+import rikka.sui.util.MiuixPopupDimOverlay
+import rikka.sui.util.MiuixPressHelper
+import rikka.sui.util.MiuixPullToRefreshView
+import rikka.sui.util.MiuixSmoothCardDrawable
+import rikka.sui.util.MiuixSquircleUtils
+import rikka.sui.util.applyMiuixPopupStyle
+import rikka.sui.widget.MiuixBottomSheetDialog
 
 class ManagementFragment : AppFragment() {
 
@@ -239,7 +239,7 @@ class ManagementFragment : AppFragment() {
             return
         }
 
-        val contextWrapper = ContextThemeWrapper(requireContext(), R.style.Theme_SUI Z_PopupMenu_OverflowRightOffset)
+        val contextWrapper = ContextThemeWrapper(requireContext(), R.style.Theme_Sui_PopupMenu_OverflowRightOffset)
         val popupMenu = PopupMenu(contextWrapper, anchorView, Gravity.END)
         overflowPopupMenu = popupMenu
         popupMenu.inflate(R.menu.overflow_popup_menu)
@@ -348,7 +348,7 @@ class ManagementFragment : AppFragment() {
         popupMenu.applyMiuixPopupStyle()
     }
     private fun showBatchOptionsMenu(anchorView: View) {
-        val contextWrapper = ContextThemeWrapper(requireContext(), R.style.Theme_SUI Z_PopupMenu_OverflowRightOffset)
+        val contextWrapper = ContextThemeWrapper(requireContext(), R.style.Theme_Sui_PopupMenu_OverflowRightOffset)
         val popupMenu = PopupMenu(contextWrapper, anchorView, Gravity.END)
         popupMenu.inflate(R.menu.batch_options_menu)
 
@@ -360,7 +360,7 @@ class ManagementFragment : AppFragment() {
         MiuixPopupDimOverlay.show(requireActivity())
 
         val currentDefaultMode = viewModel.appList.value?.data?.firstOrNull()?.defaultFlags
-            ?.and(SUI ZConfig.MASK_PERMISSION) ?: 0
+            ?.and(SuiConfig.MASK_PERMISSION) ?: 0
 
         val highlightColor = requireContext().theme.resolveColor(R.attr.colorPrimary)
 
@@ -369,10 +369,10 @@ class ManagementFragment : AppFragment() {
             val item = menu.getItem(i)
 
             val isSelected = when (item.itemId) {
-                R.id.batch_allow -> currentDefaultMode == SUI ZConfig.FLAG_ALLOWED
-                R.id.batch_allow_shell -> currentDefaultMode == SUI ZConfig.FLAG_ALLOWED_SHELL
-                R.id.batch_deny -> currentDefaultMode == SUI ZConfig.FLAG_DENIED
-                R.id.batch_hidden -> currentDefaultMode == SUI ZConfig.FLAG_HIDDEN
+                R.id.batch_allow -> currentDefaultMode == SuiConfig.FLAG_ALLOWED
+                R.id.batch_allow_shell -> currentDefaultMode == SuiConfig.FLAG_ALLOWED_SHELL
+                R.id.batch_deny -> currentDefaultMode == SuiConfig.FLAG_DENIED
+                R.id.batch_hidden -> currentDefaultMode == SuiConfig.FLAG_HIDDEN
                 R.id.batch_ask -> currentDefaultMode == 0
                 else -> false
             }
@@ -397,10 +397,10 @@ class ManagementFragment : AppFragment() {
         }
         popupMenu.setOnMenuItemClickListener { item ->
             val targetMode = when (item.itemId) {
-                R.id.batch_allow -> SUI ZConfig.FLAG_ALLOWED
-                R.id.batch_allow_shell -> SUI ZConfig.FLAG_ALLOWED_SHELL
-                R.id.batch_deny -> SUI ZConfig.FLAG_DENIED
-                R.id.batch_hidden -> SUI ZConfig.FLAG_HIDDEN
+                R.id.batch_allow -> SuiConfig.FLAG_ALLOWED
+                R.id.batch_allow_shell -> SuiConfig.FLAG_ALLOWED_SHELL
+                R.id.batch_deny -> SuiConfig.FLAG_DENIED
+                R.id.batch_hidden -> SuiConfig.FLAG_HIDDEN
                 R.id.batch_ask -> 0
                 else -> -1
             }

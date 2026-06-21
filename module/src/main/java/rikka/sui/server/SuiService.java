@@ -588,6 +588,8 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
                             // the root server's rootUids/shellUids with its empty config.
                             if (!shellMode) {
                                 syncUidsToSystemServer();
+                                configManager.syncBridgeTokenToShellFile(
+                                        BridgeServiceClient.getShellRegisterToken());
                             }
                         } else {
                             LOGGER.w("FAILURE: No response from bridge. Retrying in 1s...");

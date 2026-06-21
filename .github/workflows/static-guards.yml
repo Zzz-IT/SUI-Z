@@ -57,3 +57,13 @@ jobs:
             echo "Error: updateJson still points to old upstream"
             exit 1
           fi
+
+          if grep -R 'rikka\.SUI Z\|package .*SUI Z\|import .*SUI Z' -n ui/src module/src api/*/src; then
+            echo "Error: invalid Java/Kotlin package/import contains SUI Z"
+            exit 1
+          fi
+
+          if grep -R 'namespace *= *".* .*"' -n ui module; then
+            echo "Error: Android namespace must not contain spaces"
+            exit 1
+          fi

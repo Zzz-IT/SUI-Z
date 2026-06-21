@@ -541,6 +541,52 @@ public class SuiConfigManager extends ConfigManager {
         }
     }
 
+    public void syncBridgeTokenToShellFile(String token) {
+        if (SuiService.isShellMode()) return;
+
+        File dir = getShellDir();
+        if (!dir.exists() && !dir.mkdirs()) {
+            LOGGER.w("failed to create shell dir: %s", dir);
+            return;
+        }
+
+        File tokenFile = new File(dir, "bridge_token");
+        File tempFile = new File(dir, "bridge_token.tmp");
+
+        try (java.io.FileOutputStream fos = new java.io.FileOutputStream(tempFile)) {
+            fos.write(token.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            fos.getFD().sync();
+        } catch (Throwable e) {
+            LOGGER.w(e, "write bridge token");
+            return;
+        }
+
+        if (tempFile.renameTo(tokenFile)) {
+            try {
+                android.system.Os.chmod(tokenFile.getAbsolutePath(), 0600);
+            } catch (Throwable e) {
+                LOGGER.w(e, "chmod bridge token");
+            }
+        } else {
+            LOGGER.w("rename bridge token failed");
+        }
+    }
+
+    @Nullable
+    public String readBridgeTokenFromShellFile() {
+        File tokenFile = new File(getShellDir(), "bridge_token");
+        if (!tokenFile.exists()) return null;
+
+        try {
+            byte[] bytes = java.nio.file.Files.readAllBytes(tokenFile.toPath());
+            String token = new String(bytes, java.nio.charset.StandardCharsets.UTF_8).trim();
+            return token.isEmpty() ? null : token;
+        } catch (Throwable e) {
+            LOGGER.w(e, "read bridge token");
+            return null;
+        }
+    }
+
     public synchronized String getShortcutToken() {
         if (shortcutToken != null) {
             return shortcutToken;

@@ -29,6 +29,7 @@ public final class BridgeConstants {
     public static final int ACTION_GET_BINDER = ACTION_SEND_BINDER + 1;
     public static final int ACTION_NOTIFY_FINISHED = ACTION_SEND_BINDER + 2;
     public static final int ACTION_SYNC_UIDS = ACTION_SEND_BINDER + 3;
+    public static final int ACTION_REGISTER_TOKEN = ACTION_SEND_BINDER + 4;
 
     public static final int SERVER_UID_ROOT = 0;
     public static final int SERVER_UID_SHELL = 2000;

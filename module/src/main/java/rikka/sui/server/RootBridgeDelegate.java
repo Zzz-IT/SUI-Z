@@ -61,6 +61,10 @@ public class RootBridgeDelegate {
             data.writeInterfaceToken(BridgeConstants.SERVICE_DESCRIPTOR);
             data.writeInt(BridgeConstants.ACTION_GET_BINDER);
             data.writeInt(BridgeConstants.SERVER_UID_ROOT);
+            String shellToken = SuiConfigManager.getInstance().readBridgeTokenFromShellFile();
+            if (shellToken != null) {
+                data.writeString(shellToken);
+            }
             bridgeService.transact(BridgeConstants.TRANSACTION_CODE, data, reply, 0);
             reply.readException();
             IBinder rootBinder = reply.readStrongBinder();
