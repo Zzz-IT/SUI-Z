@@ -1,0 +1,38 @@
+name: Static Guards & Lint
+
+on:
+  push:
+    branches: [ "master", "main", "dev" ]
+  pull_request:
+    branches: [ "master", "main" ]
+
+jobs:
+  lint-and-grep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Run Android Lint
+        run: ./gradlew lint
+
+      - name: Code Pattern Grep Guards
+        run: |
+          if grep -r -E "Thread\.sleep" ./ui/src/main/java; then
+             echo "Error: Thread.sleep is forbidden in UI thread paths!"
+             exit 1
+          fi
+          if grep -r -E "rootService = |shellService = " ./module/src/main/java/rikka/sui/systemserver/BridgeService.java; then
+             echo "Error: Found service caching in BridgeService!"
+             exit 1
+          fi

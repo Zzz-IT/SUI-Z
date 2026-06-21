@@ -1,0 +1,50 @@
+name: Package Structure Check
+
+on:
+  push:
+    branches: [ "master", "main", "dev" ]
+  pull_request:
+    branches: [ "master", "main" ]
+
+jobs:
+  check-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Android SDK (NDK)
+        run: |
+          echo "y" | sudo /usr/local/lib/android/sdk/tools/bin/sdkmanager --install "ndk;25.2.9519653"
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Build Release ZIP
+        run: ./gradlew assembleRelease
+
+      - name: Check Package Structure
+        run: |
+          # Wait for module generation or output
+          ZIP_FILE=$(find out -name "*.zip" | head -n 1)
+          if [ -z "$ZIP_FILE" ]; then
+             echo "Error: Output ZIP not found! (Assuming module task creates it in out/)"
+             exit 1
+          fi
+          unzip -l "$ZIP_FILE" > zip_contents.txt
+          
+          if ! grep -q "zygisk/" zip_contents.txt; then
+             echo "Error: zygisk folder missing!"
+             exit 1
+          fi
+          if ! grep -q "module.prop" zip_contents.txt; then
+             echo "Error: module.prop missing!"
+             exit 1
+          fi

@@ -35,42 +35,40 @@ public class BridgeService {
 
     private static final IBinder.DeathRecipient DEATH_RECIPIENT_ROOT = () -> {
         rootServiceBinder = null;
-        rootService = null;
         rootServerPid = -1;
         serviceStarted = false;
         LOGGER.i("root service is dead");
     };
     private static final IBinder.DeathRecipient DEATH_RECIPIENT_SHELL = () -> {
         shellServiceBinder = null;
-        shellService = null;
         shellServerPid = -1;
         LOGGER.i("shell service is dead");
     };
 
     private static volatile IBinder rootServiceBinder;
-    private static IShizukuService rootService;
     private static volatile IBinder shellServiceBinder;
-    private static IShizukuService shellService;
     private static volatile boolean serviceStarted;
     private static volatile int rootServerPid = -1;
     private static volatile int shellServerPid = -1;
 
     public static IShizukuService get() {
-        return rootService;
+        IBinder binder = rootServiceBinder;
+        return binder == null ? null : IShizukuService.Stub.asInterface(binder);
     }
 
     public static IShizukuService getShell() {
-        return shellService;
+        IBinder binder = shellServiceBinder;
+        return binder == null ? null : IShizukuService.Stub.asInterface(binder);
     }
 
     public static boolean isServiceStarted() {
         return serviceStarted;
     }
 
-    private void sendBinder(IBinder binder, boolean isRoot) {
+    private boolean sendBinder(IBinder binder, boolean isRoot) {
         if (binder == null) {
             LOGGER.w("received empty binder");
-            return;
+            return false;
         }
 
         IBinder.DeathRecipient recipient = isRoot ? DEATH_RECIPIENT_ROOT : DEATH_RECIPIENT_SHELL;
@@ -79,7 +77,7 @@ public class BridgeService {
             binder.linkToDeath(recipient, 0);
         } catch (RemoteException e) {
             LOGGER.w(e, "received dead binder");
-            return;
+            return false;
         }
 
         try {
@@ -96,7 +94,6 @@ public class BridgeService {
                 }
 
                 rootServiceBinder = binder;
-                rootService = IShizukuService.Stub.asInterface(binder);
                 LOGGER.i("root binder received");
             } else {
                 IBinder old = shellServiceBinder;
@@ -109,15 +106,16 @@ public class BridgeService {
                 }
 
                 shellServiceBinder = binder;
-                shellService = IShizukuService.Stub.asInterface(binder);
                 LOGGER.i("shell binder received");
             }
+            return true;
         } catch (Throwable e) {
             try {
                 binder.unlinkToDeath(recipient, 0);
             } catch (Throwable ignored) {
             }
             LOGGER.w(e, "sendBinder failed");
+            return false;
         }
     }
 
@@ -141,17 +139,26 @@ public class BridgeService {
                 if (callingUid == 0 || callingUid == 2000) {
                     IBinder binder = data.readStrongBinder();
 
+                    boolean ok;
                     long identity = Binder.clearCallingIdentity();
                     try {
-                        sendBinder(binder, callingUid == 0);
+                        ok = sendBinder(binder, callingUid == 0);
+                    } finally {
+                        Binder.restoreCallingIdentity(identity);
+                    }
 
+                    if (ok) {
                         if (callingUid == 0) {
                             rootServerPid = callingPid;
                         } else {
                             shellServerPid = callingPid;
                         }
-                    } finally {
-                        Binder.restoreCallingIdentity(identity);
+                    } else {
+                        LOGGER.w(
+                                "reject binder registration: uid=%d pid=%d isRoot=%s",
+                                callingUid,
+                                callingPid,
+                                Boolean.toString(callingUid == 0));
                     }
 
                     if (reply != null) {

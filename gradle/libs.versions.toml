@@ -9,7 +9,8 @@ refine = "4.4.0"
 autoresconfig = "1.2.2"
 materialthemebuilder = "1.5.1"
 spotless = "6.25.0"
-
+libcxx = "1.2.0"
+nativehelper = "1.0.1"
 [libraries]
 androidx-annotation = { group = "androidx.annotation", name = "annotation", version.ref = "androidx-annotation" }
 androidx-core = { group = "androidx.core", name = "core", version.ref = "androidx-core" }
@@ -17,6 +18,8 @@ parcelablelist = { group = "dev.rikka.rikkax.parcelablelist", name = "parcelable
 hidden-compat = { group = "dev.rikka.hidden", name = "compat", version.ref = "hidden-api" }
 hidden-stub = { group = "dev.rikka.hidden", name = "stub", version.ref = "hidden-api" }
 refine-runtime = { group = "dev.rikka.tools.refine", name = "runtime", version.ref = "refine" }
+libcxx = { group = "dev.rikka.ndk.thirdparty", name = "cxx", version.ref = "libcxx" }
+nativehelper = { group = "dev.rikka.ndk", name = "nativehelper", version.ref = "nativehelper" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

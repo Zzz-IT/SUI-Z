@@ -47,7 +47,7 @@ public class BridgeServiceClient {
     private static IShizukuService service;
 
     @Nullable public static Integer getGlobalSettingsOrNull() {
-        android.util.Log.d("SuiBridgeDebug", "Fetching global settings via BINDER_TRANSACTION_getGlobalSettings.");
+        if (rikka.sui.ui.BuildConfig.DEBUG) android.util.Log.d("SuiBridgeDebug", "Fetching global settings via BINDER_TRANSACTION_getGlobalSettings.");
         IShizukuService s = getService();
         if (s == null) {
             android.util.Log.e("SuiBridgeDebug", "Service is null when fetching global settings.");
@@ -61,7 +61,7 @@ public class BridgeServiceClient {
             s.asBinder().transact(BINDER_TRANSACTION_getGlobalSettings, data, reply, 0);
             reply.readException();
             int flags = reply.readInt();
-            android.util.Log.i("SuiBridgeDebug", "Successfully fetched global settings flags: " + flags);
+            if (rikka.sui.ui.BuildConfig.DEBUG) android.util.Log.i("SuiBridgeDebug", "Successfully fetched global settings flags: " + flags);
             return flags;
         } catch (RemoteException e) {
             android.util.Log.e("SuiBridgeDebug", "RemoteException when calling getGlobalSettings via binder", e);
@@ -81,7 +81,7 @@ public class BridgeServiceClient {
     }
 
     public static boolean setGlobalSettings(int flags) {
-        android.util.Log.d(
+        if (rikka.sui.ui.BuildConfig.DEBUG) android.util.Log.d(
                 "SuiBridgeDebug", "Setting global settings via BINDER_TRANSACTION_setGlobalSettings. Flags = " + flags);
         IShizukuService s = getService();
         if (s == null) {
@@ -96,7 +96,7 @@ public class BridgeServiceClient {
             data.writeInt(flags);
             s.asBinder().transact(BINDER_TRANSACTION_setGlobalSettings, data, reply, 0);
             reply.readException();
-            android.util.Log.i("SuiBridgeDebug", "Successfully set global settings flags: " + flags);
+            if (rikka.sui.ui.BuildConfig.DEBUG) android.util.Log.i("SuiBridgeDebug", "Successfully set global settings flags: " + flags);
             return true;
         } catch (RemoteException e) {
             android.util.Log.e("SuiBridgeDebug", "RemoteException when calling setGlobalSettings via binder", e);
@@ -126,7 +126,7 @@ public class BridgeServiceClient {
             return null;
         }
 
-        android.util.Log.d(TAG, "Attempting to request binder from bridge...");
+        if (rikka.sui.ui.BuildConfig.DEBUG) android.util.Log.d(TAG, "Attempting to request binder from bridge...");
 
         for (int i = 0; i < RETRY_MAX; i++) {
             IBinder activityBinder = ServiceManager.getService(BridgeConstants.SERVICE_NAME);
@@ -137,7 +137,7 @@ public class BridgeServiceClient {
                         "CRITICAL FAILURE: ServiceManager.getService(\"activity\") returned null! Retry count: "
                                 + (i + 1));
             } else {
-                android.util.Log.d(TAG, "'activity' service binder obtained. Preparing custom transact...");
+                if (rikka.sui.ui.BuildConfig.DEBUG) android.util.Log.d(TAG, "'activity' service binder obtained. Preparing custom transact...");
 
                 Parcel data = Parcel.obtain();
                 Parcel reply = Parcel.obtain();
@@ -145,16 +145,16 @@ public class BridgeServiceClient {
                     data.writeInterfaceToken(BridgeConstants.SERVICE_DESCRIPTOR);
                     data.writeInt(BridgeConstants.ACTION_GET_BINDER);
 
-                    android.util.Log.d(TAG, "Executing binder.transact with custom code...");
+                    if (rikka.sui.ui.BuildConfig.DEBUG) android.util.Log.d(TAG, "Executing binder.transact with custom code...");
                     activityBinder.transact(BridgeConstants.TRANSACTION_CODE, data, reply, 0);
-                    android.util.Log.d(TAG, "Transact call has returned. Reading reply...");
+                    if (rikka.sui.ui.BuildConfig.DEBUG) android.util.Log.d(TAG, "Transact call has returned. Reading reply...");
 
                     reply.readException();
-                    android.util.Log.d(TAG, "readException() completed without throwing an exception.");
+                    if (rikka.sui.ui.BuildConfig.DEBUG) android.util.Log.d(TAG, "readException() completed without throwing an exception.");
 
                     IBinder received = reply.readStrongBinder();
                     if (received != null) {
-                        android.util.Log.i(TAG, "SUCCESS! Received a non-null binder from the bridge.");
+                        if (rikka.sui.ui.BuildConfig.DEBUG) android.util.Log.i(TAG, "SUCCESS! Received a non-null binder from the bridge.");
                         return received;
                     } else {
                         android.util.Log.w(

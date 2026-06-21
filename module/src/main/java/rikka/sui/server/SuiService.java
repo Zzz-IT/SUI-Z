@@ -93,12 +93,17 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
 
     private boolean shouldInvalidateUid(int uid) {
         long now = System.currentTimeMillis();
-        Long last = lastInvalidationTime.get(uid);
-        if (last != null && now - last < 2000) {
-            return false;
-        }
-        lastInvalidationTime.put(uid, now);
-        return true;
+        final boolean[] allow = {false};
+
+        lastInvalidationTime.compute(uid, (k, last) -> {
+            if (last == null || now - last >= 2000) {
+                allow[0] = true;
+                return now;
+            }
+            return last;
+        });
+
+        return allow[0];
     }
 
     public static SuiService getInstance() {
@@ -257,8 +262,8 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
     private final SuiClientManager clientManager;
     private final SuiConfigManager configManager;
     private final SuiUserServiceManager userServiceManager;
-    private final int systemUiUid;
-    private final int settingsUid;
+    private volatile int systemUiUid;
+    private volatile int settingsUid;
     private IShizukuApplication systemUiApplication;
 
     private final Object managerBinderLock = new Object();
@@ -505,14 +510,20 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
 
     private int waitForPackage(String[] packageNames, long timeoutMs) {
         long deadline = System.currentTimeMillis() + timeoutMs;
+        boolean first = true;
 
-        while (System.currentTimeMillis() < deadline) {
+        while (first || System.currentTimeMillis() < deadline) {
+            first = false;
             for (String packageName : packageNames) {
                 ApplicationInfo ai = PackageManagerApis.getApplicationInfoNoThrow(packageName, 0, 0);
                 if (ai != null) {
                     LOGGER.i("uid for %s is %d", packageName, ai.uid);
                     return ai.uid;
                 }
+            }
+
+            if (timeoutMs <= 0) {
+                break;
             }
 
             LOGGER.w("can't find %s, wait 1s", java.util.Arrays.toString(packageNames));
@@ -560,34 +571,32 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
     private final Runnable registerTask = new Runnable() {
         @Override
         public void run() {
-            new Thread(() -> {
-                BridgeServiceClient.send(new BridgeServiceClient.Listener() {
-                    @Override
-                    public void onSystemServerRestarted() {
-                        LOGGER.w("system restarted, re-registering...");
-                        mainHandler.post(registerTask);
-                    }
+            BridgeServiceClient.send(new BridgeServiceClient.Listener() {
+                @Override
+                public void onSystemServerRestarted() {
+                    LOGGER.w("system restarted, re-registering...");
+                    mainHandler.post(registerTask);
+                }
 
-                    @Override
-                    public void onResponseFromBridgeService(boolean response) {
-                        mainHandler.post(() -> {
-                            if (response) {
-                                LOGGER.i("SUCCESS: Service binder sent to bridge.");
-                                // Only the root server manages UID lists.
-                                // The shell server must NOT call syncUids, or it would overwrite
-                                // the root server's rootUids/shellUids with its empty config.
-                                if (!shellMode) {
-                                    syncUidsToSystemServer();
-                                }
-                            } else {
-                                LOGGER.w("FAILURE: No response from bridge. Retrying in 1s...");
-                                // dumpSuiProcess();
-                                mainHandler.postDelayed(registerTask, 1000);
+                @Override
+                public void onResponseFromBridgeService(boolean response) {
+                    mainHandler.post(() -> {
+                        if (response) {
+                            LOGGER.i("SUCCESS: Service binder sent to bridge.");
+                            // Only the root server manages UID lists.
+                            // The shell server must NOT call syncUids, or it would overwrite
+                            // the root server's rootUids/shellUids with its empty config.
+                            if (!shellMode) {
+                                syncUidsToSystemServer();
                             }
-                        });
-                    }
-                });
-            }, "BridgeRegisterThread").start();
+                        } else {
+                            LOGGER.w("FAILURE: No response from bridge. Retrying in 1s...");
+                            // dumpSuiProcess();
+                            mainHandler.postDelayed(registerTask, 1000);
+                        }
+                    });
+                }
+            });
         }
     };
 
@@ -675,6 +684,7 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
         isSettings = isSettingsPackageName(requestPackageName);
 
         if (isManager) {
+            systemUiUid = callingUid;
             IBinder binder = application.asBinder();
             try {
                 binder.linkToDeath(
@@ -704,6 +714,10 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
                 systemUiApplication = application;
                 flog.i("manager attached: pid=%d", callingPid);
             }
+        }
+
+        if (isSettings) {
+            settingsUid = callingUid;
         }
 
         if (!isManager && !isSettings) {
@@ -891,6 +905,25 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
             if (packageName != null) {
                 userServiceManager.removeUserServicesForPackage(packageName);
             }
+        } else if (Intent.ACTION_PACKAGE_ADDED.equals(action) || Intent.ACTION_PACKAGE_REPLACED.equals(action)) {
+            Uri uri = intent.getData();
+            String packageName = (uri != null) ? uri.getSchemeSpecificPart() : null;
+            if (packageName != null) {
+                refreshManagerPackageUid(packageName);
+            }
+        }
+    }
+
+    private void refreshManagerPackageUid(String packageName) {
+        ApplicationInfo ai = PackageManagerApis.getApplicationInfoNoThrow(packageName, 0, 0);
+        if (ai == null) return;
+
+        if (MANAGER_APPLICATION_ID.equals(packageName)) {
+            systemUiUid = ai.uid;
+            LOGGER.i("SystemUI uid refreshed: %d", ai.uid);
+        } else if (isSettingsPackageName(packageName)) {
+            settingsUid = ai.uid;
+            LOGGER.i("Settings uid refreshed: %d", ai.uid);
         }
     }
 

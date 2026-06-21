@@ -44,7 +44,6 @@ public class SuiConfigManager extends ConfigManager {
     private static final String SHELL_CONFIG_FILENAME = "sui_uids.txt";
     private static final String SHELL_DIR_PREFIX = "sui_shell_";
     private static final long SHELL_SYNC_DEBOUNCE_MS = 200;
-    private static final long SHELL_SYNC_WAIT_TIMEOUT_MS = 5000;
     private static final HandlerThread SHELL_SYNC_THREAD = new HandlerThread("sui-shell-sync");
     private static final Handler SHELL_SYNC_HANDLER;
 

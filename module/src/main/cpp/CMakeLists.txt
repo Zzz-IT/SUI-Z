@@ -46,7 +46,7 @@ add_library(util STATIC
         util/socket.cpp)
 target_link_libraries(util cxx::cxx log nativehelper::nativehelper_header_only)
 
-add_definitions(-DZYGISK_MODULE_ID=${ZYGISK_MODULE_ID})
+add_compile_definitions(ZYGISK_MODULE_ID="${ZYGISK_MODULE_ID}")
 
 add_library(sui SHARED
         core/main_zygisk.cpp

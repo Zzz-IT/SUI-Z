@@ -19,6 +19,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <cstdio>
 #include <sched.h>
 #include <unistd.h>
 #include <sys/mount.h>

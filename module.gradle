@@ -25,7 +25,7 @@ ext {
 
     moduleLibraryName = "SUI Z"
 
-    moduleId = "zygisk-SUI Z"
+    moduleId = "zygisk-suiz"
 
     moduleName = "Zygisk - SUI Z"
     moduleAuthor = "SUI Z Contributors"

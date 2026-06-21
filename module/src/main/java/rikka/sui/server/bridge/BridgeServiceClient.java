@@ -140,52 +140,48 @@ public class BridgeServiceClient {
             return;
         }
 
-        boolean res = sendBinderToBridge(bridgeService);
+        sendBinderToBridgeAsync(bridgeService, 0, isRestart);
+    }
 
-        if (listener != null) {
-            listener.onResponseFromBridgeService(res);
+    private static void sendBinderToBridgeAsync(IBinder bridgeService, int attempt, boolean isRestart) {
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+
+        boolean res = false;
+        try {
+            data.writeInterfaceToken(BridgeConstants.SERVICE_DESCRIPTOR);
+            data.writeInt(BridgeConstants.ACTION_SEND_BINDER);
+            data.writeStrongBinder(SuiService.getInstance());
+
+            res = bridgeService.transact(BridgeConstants.TRANSACTION_CODE, data, reply, 0);
+            reply.readException();
+        } catch (Throwable e) {
+            LOGGER.e(e, "send binder");
+        } finally {
+            data.recycle();
+            reply.recycle();
         }
 
         if (res) {
             systemServerRequested = true;
-        } else {
+            if (listener != null) {
+                listener.onResponseFromBridgeService(true);
+            }
+            return;
+        }
+
+        if (attempt >= 2) {
+            if (listener != null) {
+                listener.onResponseFromBridgeService(false);
+            }
             maybeRestartZygote();
-            BRIDGE_HANDLER.postDelayed(() -> sendToBridgeOnce(false, attempt + 1), 1000);
-        }
-    }
-
-    private static boolean sendBinderToBridge(IBinder bridgeService) {
-        for (int i = 0; i < 3; i++) {
-            Parcel data = Parcel.obtain();
-            Parcel reply = Parcel.obtain();
-
-            try {
-                data.writeInterfaceToken(BridgeConstants.SERVICE_DESCRIPTOR);
-                data.writeInt(BridgeConstants.ACTION_SEND_BINDER);
-                data.writeStrongBinder(SuiService.getInstance());
-
-                boolean res = bridgeService.transact(BridgeConstants.TRANSACTION_CODE, data, reply, 0);
-                reply.readException();
-
-                if (res) {
-                    return true;
-                }
-            } catch (Throwable e) {
-                LOGGER.e(e, "send binder");
-            } finally {
-                data.recycle();
-                reply.recycle();
-            }
-
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
-            }
+            BRIDGE_HANDLER.postDelayed(() -> sendToBridgeOnce(false, 0), 1000);
+            return;
         }
 
-        return false;
+        BRIDGE_HANDLER.postDelayed(
+                () -> sendBinderToBridgeAsync(bridgeService, attempt + 1, isRestart),
+                1000);
     }
 
     private static void maybeRestartZygote() {
