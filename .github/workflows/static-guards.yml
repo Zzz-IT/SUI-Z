@@ -6,33 +6,54 @@ on:
   pull_request:
     branches: [ "master", "main" ]
 
+permissions:
+  contents: read
+
 jobs:
   lint-and-grep:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
-          cache: 'gradle'
+          fetch-depth: 0
+          submodules: recursive
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - run: chmod +x ./gradlew
 
       - name: Run Android Lint
-        run: ./gradlew lint
+        run: ./gradlew lintDebug lintRelease --stacktrace
 
-      - name: Code Pattern Grep Guards
+      - name: Code Pattern Guards
         run: |
-          if grep -r -E "Thread\.sleep" ./ui/src/main/java; then
-             echo "Error: Thread.sleep is forbidden in UI thread paths!"
-             exit 1
+          if grep -R -- '-D_FORTIFY_SOURCE=0\|-U_FORTIFY_SOURCE' -n module/src/main/cpp; then
+            echo "Error: FORTIFY must not be disabled"
+            exit 1
           fi
-          if grep -r -E "rootService = |shellService = " ./module/src/main/java/rikka/sui/systemserver/BridgeService.java; then
-             echo "Error: Found service caching in BridgeService!"
-             exit 1
+
+          if grep -R 'moduleId *= *".* .*"' -n module.gradle; then
+            echo "Error: moduleId must not contain spaces"
+            exit 1
+          fi
+
+          if grep -R 'RestrictedBridgeBinder' -n module/src/main/java/rikka/sui/systemserver; then
+            echo "Error: RestrictedBridgeBinder must not be implemented in system_server"
+            exit 1
+          fi
+
+          if grep -n 'private void sendBinder' module/src/main/java/rikka/sui/systemserver/BridgeService.java; then
+            echo "Error: sendBinder must return boolean"
+            exit 1
+          fi
+
+          if grep -R 'xiaotong6666.github.io/Sui' -n .; then
+            echo "Error: updateJson still points to old upstream"
+            exit 1
           fi

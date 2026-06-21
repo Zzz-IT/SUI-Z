@@ -6,24 +6,38 @@ on:
   pull_request:
     branches: [ "master", "main" ]
 
+permissions:
+  contents: read
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           submodules: recursive
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
-          cache: 'gradle'
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Setup Android SDK packages
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "ndk;30.0.14904198" "cmake;3.31.6"
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Build Release
-        run: ./gradlew assembleRelease
+      - name: Native debug build
+        run: ./gradlew :module:externalNativeBuildDebug --stacktrace
+
+      - name: Assemble release
+        run: ./gradlew :module:assembleRelease --stacktrace

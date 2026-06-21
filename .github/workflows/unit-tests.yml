@@ -6,22 +6,27 @@ on:
   pull_request:
     branches: [ "master", "main" ]
 
+permissions:
+  contents: read
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
-          cache: 'gradle'
+          fetch-depth: 0
+          submodules: recursive
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
 
-      - name: Run Unit Tests
-        run: ./gradlew test
+      - run: chmod +x ./gradlew
+
+      - name: Run Android unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
