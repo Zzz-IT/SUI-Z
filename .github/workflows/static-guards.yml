@@ -1,10 +1,18 @@
 name: Static Guards
 
 on:
+  push:
+    branches: [ "master", "main", "dev" ]
+  pull_request:
+    branches: [ "master", "main" ]
   workflow_dispatch:
 
 permissions:
   contents: read
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   grep:
@@ -12,13 +20,14 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Code Pattern Guards
         run: |
-          set -e
+          set -euo pipefail
 
           if grep -R -- '-D_FORTIFY_SOURCE=0\|-U_FORTIFY_SOURCE' -n module/src/main/cpp; then
             echo "Error: FORTIFY must not be disabled"
@@ -52,6 +61,16 @@ jobs:
 
           if grep -R 'namespace *= *".* .*"' -n ui module; then
             echo "Error: Android namespace must not contain spaces"
+            exit 1
+          fi
+
+          if grep -R 'rikka\.sui\.ui\.BuildConfig' -n ui/src; then
+            echo "Error: wrong BuildConfig package; use rikka.sui.BuildConfig"
+            exit 1
+          fi
+
+          if grep -R 'ZYGISK_MODULE_ID:STRING=\\"' -n module/build.gradle; then
+            echo "Error: ZYGISK_MODULE_ID must not be pre-quoted in Gradle"
             exit 1
           fi
 

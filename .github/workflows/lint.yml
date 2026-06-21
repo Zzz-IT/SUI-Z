@@ -1,4 +1,4 @@
-name: Unit Tests
+name: Android Lint
 
 on:
   push:
@@ -15,9 +15,9 @@ defaults:
     shell: bash
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout Code
@@ -53,5 +53,5 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Run Android unit tests
-        run: ./gradlew :ui:testDebugUnitTest :module:testDebugUnitTest --stacktrace
+      - name: Run Android lint
+        run: ./gradlew :ui:lintDebug :module:lintDebug --stacktrace
