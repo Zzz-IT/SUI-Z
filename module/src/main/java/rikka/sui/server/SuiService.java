@@ -506,42 +506,6 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
         mainHandler.postDelayed(callback, DELEGATED_PERMISSION_CALLBACK_TIMEOUT_MS);
     }
 
-    private int waitForPackage(String packageName, long timeoutMs) {
-        return waitForPackage(new String[] {packageName}, timeoutMs);
-    }
-
-    private int waitForPackage(String[] packageNames, long timeoutMs) {
-        long deadline = System.currentTimeMillis() + timeoutMs;
-        boolean first = true;
-
-        while (first || System.currentTimeMillis() < deadline) {
-            first = false;
-            for (String packageName : packageNames) {
-                ApplicationInfo ai = PackageManagerApis.getApplicationInfoNoThrow(packageName, 0, 0);
-                if (ai != null) {
-                    LOGGER.i("uid for %s is %d", packageName, ai.uid);
-                    return ai.uid;
-                }
-            }
-
-            if (timeoutMs <= 0) {
-                break;
-            }
-
-            LOGGER.w("can't find %s, wait 1s", java.util.Arrays.toString(packageNames));
-
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return -1;
-            }
-        }
-
-        LOGGER.w("can't find %s after %d ms", java.util.Arrays.toString(packageNames), timeoutMs);
-        return -1;
-    }
-
     private int findPackageUid(String packageName) {
         ApplicationInfo ai = PackageManagerApis.getApplicationInfoNoThrow(packageName, 0, 0);
         if (ai != null) {
