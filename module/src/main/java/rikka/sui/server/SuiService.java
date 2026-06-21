@@ -93,17 +93,15 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
 
     private boolean shouldInvalidateUid(int uid) {
         long now = System.currentTimeMillis();
-        final boolean[] allow = {false};
 
-        lastInvalidationTime.compute(uid, (k, last) -> {
+        synchronized (lastInvalidationTime) {
+            Long last = lastInvalidationTime.get(uid);
             if (last == null || now - last >= 2000) {
-                allow[0] = true;
-                return now;
+                lastInvalidationTime.put(uid, now);
+                return true;
             }
-            return last;
-        });
-
-        return allow[0];
+            return false;
+        }
     }
 
     public static SuiService getInstance() {
