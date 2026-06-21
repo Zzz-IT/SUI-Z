@@ -110,6 +110,8 @@ public class SuiConfigManager extends ConfigManager {
 
     public static final int UID_GLOBAL_SETTINGS = -2;
 
+    private final java.util.concurrent.atomic.AtomicLong shellSyncVersion =
+            new java.util.concurrent.atomic.AtomicLong();
     private final SuiConfig config;
     private final Map<Integer, SuiConfig.PackageEntry> packageIndex = new HashMap<>();
     private final Runnable syncUidsToShellFileRunnable = this::syncUidsToShellFile;
@@ -287,6 +289,8 @@ public class SuiConfigManager extends ConfigManager {
             return;
         }
 
+        long version = shellSyncVersion.incrementAndGet();
+
         SHELL_SYNC_HANDLER.removeCallbacks(syncUidsToShellFileRunnable);
         SHELL_SYNC_HANDLER.post(() -> {
             try {
@@ -294,7 +298,7 @@ public class SuiConfigManager extends ConfigManager {
             } catch (Throwable e) {
                 LOGGER.w(e, "syncUidsToShellFileAsync error");
             } finally {
-                if (afterSync != null) {
+                if (afterSync != null && version == shellSyncVersion.get()) {
                     try {
                         afterSync.run();
                     } catch (Throwable e) {
@@ -307,6 +311,7 @@ public class SuiConfigManager extends ConfigManager {
 
     public void syncUidsToShellFileNow() {
         if (SuiService.isShellMode()) return;
+        shellSyncVersion.incrementAndGet();
         SHELL_SYNC_HANDLER.removeCallbacks(syncUidsToShellFileRunnable);
         SHELL_SYNC_HANDLER.post(() -> {
             try {

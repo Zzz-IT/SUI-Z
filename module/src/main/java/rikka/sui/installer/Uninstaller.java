@@ -47,6 +47,8 @@ public class Uninstaller {
         IShortcutService shortcutService = null;
         IUserManager userManager = null;
 
+        long deadline = System.currentTimeMillis() + 30_000;
+
         while (true) {
             //noinspection ConstantConditions
             if (shortcutService == null) {
@@ -57,6 +59,11 @@ public class Uninstaller {
             }
             if (shortcutService != null && userManager != null && userManager.isUserUnlocked(0)) {
                 break;
+            }
+
+            if (System.currentTimeMillis() >= deadline) {
+                Log.w(TAG, "timeout waiting shortcut/user service");
+                return;
             }
 
             //noinspection BusyWait

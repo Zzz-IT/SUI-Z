@@ -542,6 +542,25 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
         return -1;
     }
 
+    private int findPackageUid(String packageName) {
+        ApplicationInfo ai = PackageManagerApis.getApplicationInfoNoThrow(packageName, 0, 0);
+        if (ai != null) {
+            LOGGER.i("uid for %s is %d", packageName, ai.uid);
+            return ai.uid;
+        }
+        return -1;
+    }
+
+    private int findPackageUid(String[] packageNames) {
+        for (String packageName : packageNames) {
+            int uid = findPackageUid(packageName);
+            if (uid > 0) {
+                return uid;
+            }
+        }
+        return -1;
+    }
+
     private static boolean isSettingsPackageName(String packageName) {
         for (String candidate : SettingsPackages.SETTINGS_CANDIDATES) {
             if (candidate.equals(packageName)) {
@@ -604,6 +623,23 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
         }
     };
 
+    private final Runnable refreshManagerUidsTask = new Runnable() {
+        private int attempts;
+
+        @Override
+        public void run() {
+            if (systemUiUid <= 0) {
+                systemUiUid = findPackageUid(MANAGER_APPLICATION_ID);
+            }
+            if (settingsUid <= 0) {
+                settingsUid = findPackageUid(SettingsPackages.SETTINGS_CANDIDATES);
+            }
+            if ((systemUiUid <= 0 || settingsUid <= 0) && attempts++ < 30) {
+                mainHandler.postDelayed(this, 1000);
+            }
+        }
+    };
+
     public SuiService() {
         super();
 
@@ -615,17 +651,17 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
         clientManager = getClientManager();
         userServiceManager = getUserServiceManager();
 
-        systemUiUid = waitForPackage(MANAGER_APPLICATION_ID, 30_000);
-        settingsUid = waitForPackage(SettingsPackages.SETTINGS_CANDIDATES, 30_000);
+        systemUiUid = findPackageUid(MANAGER_APPLICATION_ID);
+        settingsUid = findPackageUid(SettingsPackages.SETTINGS_CANDIDATES);
 
-        // Skip root-only setup when running as shell server
         if (!shellMode) {
-            int gmsUid = waitForPackage(new String[] {"com.google.android.gms"}, 0);
+            int gmsUid = findPackageUid(new String[] {"com.google.android.gms"});
             if (gmsUid > 0) {
                 configManager.update(gmsUid, SuiConfig.MASK_PERMISSION, SuiConfig.FLAG_HIDDEN);
             }
         }
 
+        mainHandler.post(refreshManagerUidsTask);
         mainHandler.postDelayed(registerTask, 2000);
     }
 

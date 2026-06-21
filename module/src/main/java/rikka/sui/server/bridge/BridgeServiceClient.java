@@ -144,7 +144,10 @@ public class BridgeServiceClient {
         }
 
         if (!SuiService.isShellMode()) {
-            registerBridgeTokens(bridgeService);
+            if (!registerBridgeTokens(bridgeService)) {
+                BRIDGE_HANDLER.postDelayed(() -> sendToBridgeOnce(false, attempt + 1), 1000);
+                return;
+            }
         }
 
         sendBinderToBridgeAsync(bridgeService, 0, isRestart);
@@ -231,7 +234,7 @@ public class BridgeServiceClient {
         BRIDGE_HANDLER.post(() -> sendToBridgeOnce(false, 0));
     }
 
-    private static void registerBridgeTokens(IBinder bridgeService) {
+    private static boolean registerBridgeTokens(IBinder bridgeService) {
         Parcel data = Parcel.obtain();
         Parcel reply = Parcel.obtain();
 
@@ -249,8 +252,10 @@ public class BridgeServiceClient {
             } else {
                 LOGGER.w("bridge tokens were rejected");
             }
+            return accepted;
         } catch (Throwable e) {
             LOGGER.w(e, "register bridge tokens");
+            return false;
         } finally {
             data.recycle();
             reply.recycle();

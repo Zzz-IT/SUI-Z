@@ -28,15 +28,26 @@ import java.util.Objects;
 
 public class Starter {
 
-    private static void waitSystemService(String name) {
+    private static boolean waitSystemService(String name, long timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+
         while (ServiceManager.getService(name) == null) {
+            if (System.currentTimeMillis() >= deadline) {
+                LOGGER.e("service %s is not started after %d ms", name, timeoutMs);
+                return false;
+            }
+
             try {
                 LOGGER.i("service " + name + " is not started, wait 1s.");
                 Thread.sleep(1000);
             } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
                 LOGGER.w(e.getMessage(), e);
+                return false;
             }
         }
+
+        return true;
     }
 
     public static void main(String[] args) {
@@ -61,10 +72,13 @@ public class Starter {
 
         Objects.requireNonNull(filesPath, "--files-path not set");
 
-        waitSystemService("package");
-        waitSystemService("activity");
-        waitSystemService(Context.USER_SERVICE);
-        waitSystemService(Context.APP_OPS_SERVICE);
+        if (!waitSystemService("package", 60_000)
+                || !waitSystemService("activity", 60_000)
+                || !waitSystemService(Context.USER_SERVICE, 60_000)
+                || !waitSystemService(Context.APP_OPS_SERVICE, 60_000)) {
+            System.exit(1);
+            return;
+        }
 
         SuiService.main(filesPath, isShell);
     }
