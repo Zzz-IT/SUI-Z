@@ -60,8 +60,12 @@ static bool ensureInit(JNIEnv* env) {
     jmethodID readExceptionMethodTmp = nullptr;
     jmethodID readStrongBinderMethodTmp = nullptr;
     jclass deadObjectExceptionClassTmp = nullptr;
+    jclass localServiceManager = nullptr;
+    jclass localIBinder = nullptr;
+    jclass localParcel = nullptr;
+    jclass localDeadObject = nullptr;
 
-    jclass localServiceManager = env->FindClass("android/os/ServiceManager");
+    localServiceManager = env->FindClass("android/os/ServiceManager");
     if (!localServiceManager) {
         env->ExceptionClear();
         LOGE("FindClass ServiceManager failed");
@@ -85,7 +89,7 @@ static bool ensureInit(JNIEnv* env) {
         goto fail;
     }
 
-    jclass localIBinder = env->FindClass("android/os/IBinder");
+    localIBinder = env->FindClass("android/os/IBinder");
     if (!localIBinder) {
         env->ExceptionClear();
         LOGE("FindClass IBinder failed");
@@ -97,6 +101,7 @@ static bool ensureInit(JNIEnv* env) {
             "transact",
             "(ILandroid/os/Parcel;Landroid/os/Parcel;I)Z");
     env->DeleteLocalRef(localIBinder);
+    localIBinder = nullptr;
 
     if (!transactMethodTmp) {
         env->ExceptionClear();
@@ -104,7 +109,7 @@ static bool ensureInit(JNIEnv* env) {
         goto fail;
     }
 
-    jclass localParcel = env->FindClass("android/os/Parcel");
+    localParcel = env->FindClass("android/os/Parcel");
     if (!localParcel) {
         env->ExceptionClear();
         LOGE("FindClass Parcel failed");
@@ -113,6 +118,7 @@ static bool ensureInit(JNIEnv* env) {
 
     parcelClassTmp = (jclass) env->NewGlobalRef(localParcel);
     env->DeleteLocalRef(localParcel);
+    localParcel = nullptr;
     if (!parcelClassTmp) {
         LOGE("NewGlobalRef Parcel failed");
         goto fail;
@@ -134,15 +140,14 @@ static bool ensureInit(JNIEnv* env) {
         goto fail;
     }
 
-    {
-        jclass localDeadObject = env->FindClass("android/os/DeadObjectException");
-        if (localDeadObject) {
-            deadObjectExceptionClassTmp = (jclass) env->NewGlobalRef(localDeadObject);
-            env->DeleteLocalRef(localDeadObject);
-        } else {
-            env->ExceptionClear();
-            LOGW("DeadObjectException class not found");
-        }
+    localDeadObject = env->FindClass("android/os/DeadObjectException");
+    if (localDeadObject) {
+        deadObjectExceptionClassTmp = (jclass) env->NewGlobalRef(localDeadObject);
+        env->DeleteLocalRef(localDeadObject);
+        localDeadObject = nullptr;
+    } else {
+        env->ExceptionClear();
+        LOGW("DeadObjectException class not found");
     }
 
     serviceManagerClass = serviceManagerClassTmp;
@@ -161,6 +166,10 @@ static bool ensureInit(JNIEnv* env) {
     return true;
 
 fail:
+    if (localServiceManager) env->DeleteLocalRef(localServiceManager);
+    if (localIBinder) env->DeleteLocalRef(localIBinder);
+    if (localParcel) env->DeleteLocalRef(localParcel);
+    if (localDeadObject) env->DeleteLocalRef(localDeadObject);
     if (serviceManagerClassTmp) env->DeleteGlobalRef(serviceManagerClassTmp);
     if (parcelClassTmp) env->DeleteGlobalRef(parcelClassTmp);
     if (deadObjectExceptionClassTmp) env->DeleteGlobalRef(deadObjectExceptionClassTmp);
