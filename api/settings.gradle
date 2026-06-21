@@ -1,0 +1,32 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        mavenLocal()
+    }
+}
+
+plugins {
+    id("com.android.settings") version "9.2.1"
+}
+
+android {
+    compileSdk = 36
+    minSdk = 23
+    targetSdk = 36
+    ndkVersion = "29.0.13113456"
+    buildToolsVersion = "36.0.0"
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        mavenLocal()
+    }
+}
+
+include ':aidl', ':shared', ':api', ':provider', ':rish'
+include ':demo', ':demo-hidden-api-stub'
+include ':server-shared'
