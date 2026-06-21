@@ -173,6 +173,10 @@ public class BridgeServiceClient {
 
             res = bridgeService.transact(BridgeConstants.TRANSACTION_CODE, data, reply, 0);
             reply.readException();
+            if (res) {
+                int accepted = reply.readInt();
+                res = accepted != 0;
+            }
         } catch (Throwable e) {
             LOGGER.e(e, "send binder");
         } finally {
@@ -250,6 +254,10 @@ public class BridgeServiceClient {
 
     public static String getShellRegisterToken() {
         return SHELL_REGISTER_TOKEN;
+    }
+
+    public static String getRootRegisterToken() {
+        return ROOT_REGISTER_TOKEN;
     }
 
     public static void notifyStarted() {

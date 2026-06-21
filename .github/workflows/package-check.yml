@@ -78,6 +78,10 @@ jobs:
           grep -q "lib/" zip_contents.txt
           grep -q "libsui.so" zip_contents.txt
 
+          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+            grep -q "lib/$abi/libsui.so" zip_contents.txt || { echo "Error: missing lib/$abi/libsui.so"; exit 1; }
+          done
+
           grep -q "^id=zygisk-suiz$" module.prop.txt
           grep -q "^name=Zygisk - SUI Z$" module.prop.txt
 

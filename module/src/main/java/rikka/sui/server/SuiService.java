@@ -121,6 +121,10 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
             data.writeInt(BridgeConstants.ACTION_GET_BINDER);
             if (serverUid == BridgeConstants.SERVER_UID_ROOT || serverUid == BridgeConstants.SERVER_UID_SHELL) {
                 data.writeInt(serverUid);
+                String rootToken = rikka.sui.server.bridge.BridgeServiceClient.getRootRegisterToken();
+                if (rootToken != null) {
+                    data.writeString(rootToken);
+                }
             }
             bridgeService.transact(BridgeConstants.TRANSACTION_CODE, data, reply, 0);
             reply.readException();

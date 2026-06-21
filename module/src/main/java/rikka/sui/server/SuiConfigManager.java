@@ -42,6 +42,8 @@ public class SuiConfigManager extends ConfigManager {
     private static final String SHELL_BASE_DIR = "/data/local/tmp";
     private static final String SHELL_DIR_MARKER = "/data/adb/sui/shell_dir_name";
     private static final String SHELL_CONFIG_FILENAME = "sui_uids.txt";
+    private static final String BRIDGE_TOKEN_FILENAME = "bridge_token";
+    private static final String BRIDGE_TOKEN_TMP_FILENAME = "bridge_token.tmp";
     private static final String SHELL_DIR_PREFIX = "sui_shell_";
     private static final long SHELL_SYNC_DEBOUNCE_MS = 200;
     private static final HandlerThread SHELL_SYNC_THREAD = new HandlerThread("sui-shell-sync");
@@ -551,8 +553,8 @@ public class SuiConfigManager extends ConfigManager {
             return;
         }
 
-        File tokenFile = new File(dir, "bridge_token");
-        File tempFile = new File(dir, "bridge_token.tmp");
+        File tokenFile = new File(dir, BRIDGE_TOKEN_FILENAME);
+        File tempFile = new File(dir, BRIDGE_TOKEN_TMP_FILENAME);
 
         try (java.io.FileOutputStream fos = new java.io.FileOutputStream(tempFile)) {
             fos.write(token.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -576,7 +578,7 @@ public class SuiConfigManager extends ConfigManager {
 
     @Nullable
     public String readBridgeTokenFromShellFile() {
-        File tokenFile = new File(getShellDir(), "bridge_token");
+        File tokenFile = new File(getShellDir(), BRIDGE_TOKEN_FILENAME);
         if (!tokenFile.exists()) return null;
 
         try (BufferedReader reader = new BufferedReader(new java.io.InputStreamReader(

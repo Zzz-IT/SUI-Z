@@ -59,8 +59,6 @@ static jmethodID isUidHiddenEffectiveMethodID;
 static jclass javaBinderClass = nullptr;
 static jmethodID getCallingUidMethodID = nullptr;
 
-static jint startShortcutTransactionCode = -1;
-
 static std::unordered_set<uid_t> hiddenUids;
 static std::shared_mutex hiddenUidsMutex;
 
@@ -277,10 +275,7 @@ static bool ExecTransact(jboolean* res, JNIEnv* env, jobject obj, va_list args) 
         *res = env->CallStaticBooleanMethod(mainClass, my_execTransactMethodID, obj, code, dataObj,
                                             replyObj, flags);
         return true;
-    } /* else if (startShortcutTransactionCode != -1 && code == startShortcutTransactionCode) {
-         *res = env->CallStaticBooleanMethod(mainClass, my_execTransactMethodID, obj, code, dataObj,
-     replyObj, flags); if (*res) return true;
-     }*/
+    }
 
     return false;
 }
@@ -306,19 +301,5 @@ void main(JNIEnv* env, Dex* dexFile) {
     env->GetJavaVM(&javaVm);
 
     BinderHook::Install(javaVm, env, ExecTransact);
-
-    /*if (android_get_device_api_level() >= 26) {
-        jclass launcherAppsClass;
-        jfieldID startShortcutId;
-
-        launcherAppsClass = env->FindClass("android/content/pm/ILauncherApps$Stub");
-        if (!launcherAppsClass) goto clean;
-        startShortcutId = env->GetStaticFieldID(launcherAppsClass, "TRANSACTION_startShortcut",
-    "I"); if (!startShortcutId) goto clean; startShortcutTransactionCode =
-    env->GetStaticIntField(launcherAppsClass, startShortcutId);
-
-        clean:
-        env->ExceptionClear();
-    }*/
 }
 }  // namespace SystemServer

@@ -83,3 +83,13 @@ jobs:
             echo "Error: shell token check is missing"
             exit 1
           fi
+
+          if ! grep -R 'reply.writeInt' -n module/src/main/java/rikka/sui/systemserver/BridgeService.java; then
+            echo "Error: ACTION_SEND_BINDER must write accepted status to reply"
+            exit 1
+          fi
+
+          if ! grep -R 'getRootRegisterToken' -n module/src/main/java/rikka/sui/server/SuiService.java; then
+            echo "Error: root binder request must include root delegate token"
+            exit 1
+          fi

@@ -152,6 +152,7 @@ public class BridgeService {
                         LOGGER.w("reject binder registration: invalid token uid=%d pid=%d", callingUid, callingPid);
                         if (reply != null) {
                             reply.writeNoException();
+                            reply.writeInt(0);
                         }
                         return true;
                     }
@@ -180,6 +181,7 @@ public class BridgeService {
 
                     if (reply != null) {
                         reply.writeNoException();
+                        reply.writeInt(ok ? 1 : 0);
                     }
                     return true;
                 }
