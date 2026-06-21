@@ -579,9 +579,13 @@ public class SuiConfigManager extends ConfigManager {
         File tokenFile = new File(getShellDir(), "bridge_token");
         if (!tokenFile.exists()) return null;
 
-        try {
-            byte[] bytes = java.nio.file.Files.readAllBytes(tokenFile.toPath());
-            String token = new String(bytes, java.nio.charset.StandardCharsets.UTF_8).trim();
+        try (BufferedReader reader = new BufferedReader(new java.io.InputStreamReader(
+                new java.io.FileInputStream(tokenFile), java.nio.charset.StandardCharsets.UTF_8))) {
+            String token = reader.readLine();
+            if (token == null) {
+                return null;
+            }
+            token = token.trim();
             return token.isEmpty() ? null : token;
         } catch (Throwable e) {
             LOGGER.w(e, "read bridge token");

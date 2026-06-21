@@ -62,7 +62,7 @@ android {
             }
         }
     }
-    lintOptions {
+    lint {
         checkReleaseBuilds = true
     }
     dependenciesInfo {
