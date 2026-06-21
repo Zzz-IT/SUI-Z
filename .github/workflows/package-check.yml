@@ -1,10 +1,18 @@
 name: Package Structure Check
 
 on:
+  push:
+    branches: [ "master", "main", "dev" ]
+  pull_request:
+    branches: [ "master", "main" ]
   workflow_dispatch:
 
 permissions:
   contents: read
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   check-package:
@@ -12,36 +20,57 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: recursive
 
-      - uses: actions/setup-java@v4
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
           cache: gradle
 
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
-      - run: yes | sdkmanager --licenses || true
-      - run: chmod +x ./gradlew
+      - name: Accept Android SDK licenses
+        run: |
+          set -euo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+
+      - name: Configure Gradle properties
+        run: |
+          set -euo pipefail
+          {
+            echo 'android.sdk.channel=3'
+            echo 'android.native.buildOutput=verbose'
+            echo 'org.gradle.caching=true'
+            echo 'org.gradle.parallel=true'
+          } >> gradle.properties
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
 
       - name: Build Release ZIP
         run: ./gradlew :module:zipRelease --stacktrace
 
       - name: Check Package Structure
         run: |
-          set -e
-          ZIP_FILE=$(find out -name "*.zip" | head -n 1)
+          set -euo pipefail
+
+          ZIP_FILE="$(find out -maxdepth 1 -type f -name "*.zip" | sort | head -n 1)"
           if [ -z "$ZIP_FILE" ]; then
-             echo "Error: Output ZIP not found"
-             exit 1
+            echo "Error: Output ZIP not found"
+            find out -maxdepth 3 -type f | sort || true
+            exit 1
           fi
 
-          unzip -l "$ZIP_FILE" > zip_contents.txt
-          unzip -p "$ZIP_FILE" module.prop > module.prop.txt
+          echo "ZIP=$ZIP_FILE"
+          unzip -l "$ZIP_FILE" | tee zip_contents.txt
+          unzip -p "$ZIP_FILE" module.prop | tee module.prop.txt
 
           grep -q "module.prop" zip_contents.txt
           grep -q "sui.dex" zip_contents.txt
