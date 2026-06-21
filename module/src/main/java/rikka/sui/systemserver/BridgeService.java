@@ -341,7 +341,7 @@ public class BridgeService {
 
     private static boolean isRegisterTokenAllowed(int uid, @Nullable String token) {
         if (uid == 0) {
-            return rootRegisterToken == null || rootRegisterToken.equals(token);
+            return rootRegisterToken != null && rootRegisterToken.equals(token);
         }
 
         if (uid == 2000) {

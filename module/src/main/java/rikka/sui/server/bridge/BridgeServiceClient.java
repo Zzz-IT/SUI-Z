@@ -156,9 +156,13 @@ public class BridgeServiceClient {
 
         boolean res = false;
         try {
-            String token = SuiService.isShellMode()
-                    ? rikka.sui.server.SuiConfigManager.getInstance().readBridgeTokenFromShellFile()
-                    : ROOT_REGISTER_TOKEN;
+            String token;
+            if (SuiService.isShellMode()) {
+                rikka.sui.server.SuiConfigManager manager = rikka.sui.server.SuiConfigManager.getInstance();
+                token = manager != null ? manager.readBridgeTokenFromShellFile() : null;
+            } else {
+                token = ROOT_REGISTER_TOKEN;
+            }
 
             data.writeInterfaceToken(BridgeConstants.SERVICE_DESCRIPTOR);
             data.writeInt(BridgeConstants.ACTION_SEND_BINDER);

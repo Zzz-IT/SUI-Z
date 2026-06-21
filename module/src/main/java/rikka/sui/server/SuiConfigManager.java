@@ -87,10 +87,8 @@ public class SuiConfigManager extends ConfigManager {
 
     private static SuiConfigManager instance;
 
+    @Nullable
     public static SuiConfigManager getInstance() {
-        if (instance == null) {
-            instance = new SuiConfigManager();
-        }
         return instance;
     }
 
@@ -120,6 +118,9 @@ public class SuiConfigManager extends ConfigManager {
     private String shortcutToken;
 
     public SuiConfigManager() {
+        synchronized (SuiConfigManager.class) {
+            instance = this;
+        }
         this.config = load();
         synchronized (this) {
             rebuildPackageIndexLocked();
@@ -563,9 +564,10 @@ public class SuiConfigManager extends ConfigManager {
 
         if (tempFile.renameTo(tokenFile)) {
             try {
+                android.system.Os.chown(tokenFile.getAbsolutePath(), 2000, 2000);
                 android.system.Os.chmod(tokenFile.getAbsolutePath(), 0600);
             } catch (Throwable e) {
-                LOGGER.w(e, "chmod bridge token");
+                LOGGER.w(e, "chown/chmod bridge token");
             }
         } else {
             LOGGER.w("rename bridge token failed");

@@ -31,17 +31,17 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses || true
 
-      - name: Setup Android SDK packages
-        run: sdkmanager "ndk;30.0.14904198" "cmake;3.31.6"
-
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
       - name: Gradle configuration check
         run: ./gradlew projects --stacktrace
 
-      - name: Native debug build
-        run: ./gradlew :module:externalNativeBuildDebug --stacktrace
+      - name: Assemble UI debug
+        run: ./gradlew :ui:assembleDebug --stacktrace
 
-      - name: Assemble release
+      - name: Assemble module debug
+        run: ./gradlew :module:assembleDebug --stacktrace
+
+      - name: Assemble module release
         run: ./gradlew :module:assembleRelease --stacktrace

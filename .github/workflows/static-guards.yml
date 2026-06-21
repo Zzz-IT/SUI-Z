@@ -53,7 +53,7 @@ jobs:
             exit 1
           fi
 
-          if grep -R 'xiaotong6666.github.io/Sui' -n .; then
+          if grep -R 'xiaotong6666.github.io/Sui' -n module/build.gradle template; then
             echo "Error: updateJson still points to old upstream"
             exit 1
           fi

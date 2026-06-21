@@ -61,7 +61,8 @@ public class RootBridgeDelegate {
             data.writeInterfaceToken(BridgeConstants.SERVICE_DESCRIPTOR);
             data.writeInt(BridgeConstants.ACTION_GET_BINDER);
             data.writeInt(BridgeConstants.SERVER_UID_ROOT);
-            String shellToken = SuiConfigManager.getInstance().readBridgeTokenFromShellFile();
+            SuiConfigManager manager = SuiConfigManager.getInstance();
+            String shellToken = manager != null ? manager.readBridgeTokenFromShellFile() : null;
             if (shellToken != null) {
                 data.writeString(shellToken);
             }
