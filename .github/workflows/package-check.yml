@@ -80,6 +80,10 @@ jobs:
 
           for abi in arm64-v8a armeabi-v7a x86 x86_64; do
             grep -q "lib/$abi/libsui.so" zip_contents.txt || { echo "Error: missing lib/$abi/libsui.so"; exit 1; }
+            grep -q "lib/$abi/libmain.so" zip_contents.txt || { echo "Error: missing lib/$abi/libmain.so"; exit 1; }
+            grep -q "lib/$abi/libadbd_wrapper.so" zip_contents.txt || { echo "Error: missing lib/$abi/libadbd_wrapper.so"; exit 1; }
+            grep -q "lib/$abi/libadbd_preload.so" zip_contents.txt || { echo "Error: missing lib/$abi/libadbd_preload.so"; exit 1; }
+            grep -q "lib/$abi/libsepolicy_checker.so" zip_contents.txt || { echo "Error: missing lib/$abi/libsepolicy_checker.so"; exit 1; }
           done
 
           grep -q "^id=zygisk-suiz$" module.prop.txt

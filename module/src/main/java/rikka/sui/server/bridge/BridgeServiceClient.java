@@ -241,9 +241,14 @@ public class BridgeServiceClient {
             data.writeString(ROOT_REGISTER_TOKEN);
             data.writeString(SHELL_REGISTER_TOKEN);
 
-            bridgeService.transact(BridgeConstants.TRANSACTION_CODE, data, reply, 0);
+            boolean transactOk = bridgeService.transact(BridgeConstants.TRANSACTION_CODE, data, reply, 0);
             reply.readException();
-            LOGGER.i("bridge tokens registered");
+            boolean accepted = transactOk && reply.readInt() != 0;
+            if (accepted) {
+                LOGGER.i("bridge tokens registered");
+            } else {
+                LOGGER.w("bridge tokens were rejected");
+            }
         } catch (Throwable e) {
             LOGGER.w(e, "register bridge tokens");
         } finally {
@@ -258,6 +263,10 @@ public class BridgeServiceClient {
 
     public static String getRootRegisterToken() {
         return ROOT_REGISTER_TOKEN;
+    }
+
+    public static boolean isValidShellDelegateToken(String token) {
+        return SHELL_REGISTER_TOKEN.equals(token);
     }
 
     public static void notifyStarted() {

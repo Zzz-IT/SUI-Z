@@ -82,6 +82,9 @@ public class RootBridgeDelegate {
                 data.writeInt(callingUid);
                 data.writeInt(callingPid);
                 data.writeStrongBinder(callback);
+                if (shellToken != null) {
+                    data.writeString(shellToken);
+                }
                 rootBinder.transact(
                         ServerConstants.BINDER_TRANSACTION_requestPermissionFromShell, data, null, IBinder.FLAG_ONEWAY);
                 data.recycle();

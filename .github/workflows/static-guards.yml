@@ -93,3 +93,23 @@ jobs:
             echo "Error: root binder request must include root delegate token"
             exit 1
           fi
+
+          if ! grep -q 'reply.writeInt(ok ? 1 : 0)' module/src/main/java/rikka/sui/systemserver/BridgeService.java; then
+            echo "Error: ACTION_SEND_BINDER must write accepted status in success/fail paths"
+            exit 1
+          fi
+
+          if ! grep -q 'reply.writeInt(accepted ? 1 : 0)' module/src/main/java/rikka/sui/systemserver/BridgeService.java; then
+            echo "Error: ACTION_REGISTER_TOKEN must write accepted status"
+            exit 1
+          fi
+
+          if ! grep -q 'data.writeString(rootToken)' module/src/main/java/rikka/sui/server/SuiService.java; then
+            echo "Error: root binder request must write root token to parcel"
+            exit 1
+          fi
+
+          if ! grep -q 'isValidShellDelegateToken' module/src/main/java/rikka/sui/server/SuiService.java; then
+            echo "Error: requestPermissionFromShell must verify shell delegate token"
+            exit 1
+          fi

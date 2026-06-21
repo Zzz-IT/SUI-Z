@@ -1138,6 +1138,16 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
             int reqPid = data.readInt();
             android.os.IBinder callback = data.readStrongBinder();
 
+            String delegateToken = null;
+            if (data.dataAvail() > 0) {
+                delegateToken = data.readString();
+            }
+
+            if (callingUid == 2000 && !rikka.sui.server.bridge.BridgeServiceClient.isValidShellDelegateToken(delegateToken)) {
+                LOGGER.w("requestPermissionFromShell rejected: invalid shell delegate token from uid=%d", callingUid);
+                return false;
+            }
+
             if (reqUid < 10000) {
                 LOGGER.w("requestPermissionFromShell rejected: invalid app uid %d", reqUid);
                 return false;

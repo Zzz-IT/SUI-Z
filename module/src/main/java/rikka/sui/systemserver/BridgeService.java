@@ -288,32 +288,27 @@ public class BridgeService {
                 int callingUid = Binder.getCallingUid();
                 int callingPid = Binder.getCallingPid();
 
+                boolean accepted = false;
+
                 if (callingUid != 0) {
                     LOGGER.w("reject token registration from uid=%d pid=%d", callingUid, callingPid);
-                    if (reply != null) {
-                        reply.writeNoException();
+                } else {
+                    String rToken = data.readString();
+                    String sToken = data.readString();
+
+                    if (!isValidToken(rToken) || !isValidToken(sToken)) {
+                        LOGGER.w("reject invalid bridge tokens");
+                    } else {
+                        rootRegisterToken = rToken;
+                        shellRegisterToken = sToken;
+                        accepted = true;
+                        LOGGER.i("bridge tokens registered by root pid=%d", callingPid);
                     }
-                    return true;
                 }
-
-                String rToken = data.readString();
-                String sToken = data.readString();
-
-                if (!isValidToken(rToken) || !isValidToken(sToken)) {
-                    LOGGER.w("reject invalid bridge tokens");
-                    if (reply != null) {
-                        reply.writeNoException();
-                    }
-                    return true;
-                }
-
-                rootRegisterToken = rToken;
-                shellRegisterToken = sToken;
-
-                LOGGER.i("bridge tokens registered by root pid=%d", callingPid);
 
                 if (reply != null) {
                     reply.writeNoException();
+                    reply.writeInt(accepted ? 1 : 0);
                 }
                 return true;
             }
