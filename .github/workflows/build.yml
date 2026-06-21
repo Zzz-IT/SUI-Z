@@ -61,3 +61,6 @@ jobs:
 
       - name: Assemble module debug
         run: ./gradlew :module:assembleDebug --stacktrace
+
+      - name: Assemble module release
+        run: ./gradlew :module:assembleRelease --stacktrace
