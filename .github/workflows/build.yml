@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -28,10 +32,23 @@ jobs:
           java-version: '21'
           cache: gradle
 
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses || true
+        run: |
+          set -euo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+
+      - name: Configure Gradle properties
+        run: |
+          set -euo pipefail
+          {
+            echo 'android.sdk.channel=3'
+            echo 'android.native.buildOutput=verbose'
+            echo 'org.gradle.caching=true'
+            echo 'org.gradle.parallel=true'
+          } >> gradle.properties
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
