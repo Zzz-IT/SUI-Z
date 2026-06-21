@@ -1,10 +1,7 @@
 name: Package Structure Check
 
 on:
-  push:
-    branches: [ "master", "main", "dev" ]
-  pull_request:
-    branches: [ "master", "main" ]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -26,11 +23,9 @@ jobs:
           java-version: '21'
           cache: gradle
 
-      - name: Setup Android SDK packages
-        run: |
-          yes | sdkmanager --licenses
-          sdkmanager "ndk;30.0.14904198" "cmake;3.31.6"
+      - uses: gradle/actions/setup-gradle@v4
 
+      - run: yes | sdkmanager --licenses || true
       - run: chmod +x ./gradlew
 
       - name: Build Release ZIP

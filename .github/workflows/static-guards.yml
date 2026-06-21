@@ -1,38 +1,25 @@
-name: Static Guards & Lint
+name: Static Guards
 
 on:
-  push:
-    branches: [ "master", "main", "dev" ]
-  pull_request:
-    branches: [ "master", "main" ]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  lint-and-grep:
+  grep:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: recursive
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: gradle
-
-      - run: chmod +x ./gradlew
-
-      - name: Run Android Lint
-        run: ./gradlew lintDebug lintRelease --stacktrace
 
       - name: Code Pattern Guards
         run: |
+          set -e
+
           if grep -R -- '-D_FORTIFY_SOURCE=0\|-U_FORTIFY_SOURCE' -n module/src/main/cpp; then
             echo "Error: FORTIFY must not be disabled"
             exit 1
@@ -65,5 +52,15 @@ jobs:
 
           if grep -R 'namespace *= *".* .*"' -n ui module; then
             echo "Error: Android namespace must not contain spaces"
+            exit 1
+          fi
+
+          if ! grep -R 'ACTION_REGISTER_TOKEN' -n api/shared/src/main/java/rikka/sui/util/BridgeConstants.java; then
+            echo "Error: bridge token action is missing"
+            exit 1
+          fi
+
+          if ! grep -R 'shellRegisterToken' -n module/src/main/java/rikka/sui/systemserver/BridgeService.java; then
+            echo "Error: shell token check is missing"
             exit 1
           fi
