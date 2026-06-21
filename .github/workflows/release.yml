@@ -63,18 +63,16 @@ jobs:
             echo 'org.gradle.parallel=true'
           } >> gradle.properties
 
-      - name: Make scripts executable
+      - name: Make gradlew executable
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          chmod +x scripts/smoke_check.sh
-          chmod +x scripts/extract_changelog.sh
 
       - name: Extract changelog
         run: |
           set -euo pipefail
 
-          scripts/extract_changelog.sh "$TAG" CHANGELOG.md > release_notes.md
+          bash scripts/extract_changelog.sh "$TAG" CHANGELOG.md > release_notes.md
 
           echo "Release notes:"
           cat release_notes.md
@@ -101,7 +99,7 @@ jobs:
       - name: Smoke check ZIP
         run: |
           set -euo pipefail
-          scripts/smoke_check.sh "$ZIP_FILE"
+          bash scripts/smoke_check.sh "$ZIP_FILE"
 
       - name: Generate SHA256
         run: |

@@ -29,17 +29,17 @@ jobs:
         run: |
           set -euo pipefail
 
-          if grep -R -- '-D_FORTIFY_SOURCE=0\|-U_FORTIFY_SOURCE' -n module/src/main/cpp; then
+          if grep -R -n -- '-D_FORTIFY_SOURCE=0\|-U_FORTIFY_SOURCE' module/src/main/cpp; then
             echo "Error: FORTIFY must not be disabled"
             exit 1
           fi
 
-          if grep -R 'moduleId *= *".* .*"' -n module.gradle; then
+          if grep -R -n 'moduleId *= *".* .*"' module.gradle; then
             echo "Error: moduleId must not contain spaces"
             exit 1
           fi
 
-          if grep -R 'RestrictedBridgeBinder' -n module/src/main/java/rikka/sui/systemserver; then
+          if grep -R -n 'RestrictedBridgeBinder' module/src/main/java/rikka/sui/systemserver; then
             echo "Error: RestrictedBridgeBinder must not be implemented in system_server"
             exit 1
           fi
@@ -49,37 +49,37 @@ jobs:
             exit 1
           fi
 
-          if grep -R 'xiaotong6666.github.io/Sui' -n module/build.gradle template; then
+          if grep -R -n 'xiaotong6666.github.io/Sui' module/build.gradle template; then
             echo "Error: updateJson still points to old upstream"
             exit 1
           fi
 
-          if grep -R 'rikka\.SUI Z\|package .*SUI Z\|import .*SUI Z' -n ui/src module/src api/*/src; then
+          if grep -R -n 'rikka\.SUI Z\|package .*SUI Z\|import .*SUI Z' ui/src module/src api/*/src; then
             echo "Error: invalid Java/Kotlin package/import contains SUI Z"
             exit 1
           fi
 
-          if grep -R 'namespace *= *".* .*"' -n ui module; then
+          if grep -R -n 'namespace *= *".* .*"' ui module; then
             echo "Error: Android namespace must not contain spaces"
             exit 1
           fi
 
-          if grep -R 'rikka\.sui\.ui\.BuildConfig' -n ui/src; then
+          if grep -R -n 'rikka\.sui\.ui\.BuildConfig' ui/src; then
             echo "Error: wrong BuildConfig package; use rikka.sui.BuildConfig"
             exit 1
           fi
 
-          if grep -R 'ZYGISK_MODULE_ID:STRING=\\"' -n module/build.gradle; then
+          if grep -R -n 'ZYGISK_MODULE_ID:STRING=\\"' module/build.gradle; then
             echo "Error: ZYGISK_MODULE_ID must not be pre-quoted in Gradle"
             exit 1
           fi
 
-          if ! grep -R 'ACTION_REGISTER_TOKEN' -n api/shared/src/main/java/rikka/sui/util/BridgeConstants.java; then
+          if ! grep -R -n 'ACTION_REGISTER_TOKEN' api/shared/src/main/java/rikka/sui/util/BridgeConstants.java; then
             echo "Error: bridge token action is missing"
             exit 1
           fi
 
-          if ! grep -R 'shellRegisterToken' -n module/src/main/java/rikka/sui/systemserver/BridgeService.java; then
+          if ! grep -R -n 'shellRegisterToken' module/src/main/java/rikka/sui/systemserver/BridgeService.java; then
             echo "Error: shell token check is missing"
             exit 1
           fi
@@ -114,13 +114,13 @@ jobs:
             exit 1
           fi
 
-          if [ ! -x scripts/extract_changelog.sh ]; then
-            echo "Error: scripts/extract_changelog.sh must exist and be executable"
+          if [ ! -f scripts/extract_changelog.sh ]; then
+            echo "Error: scripts/extract_changelog.sh is missing"
             exit 1
           fi
 
-          if [ ! -x scripts/smoke_check.sh ]; then
-            echo "Error: scripts/smoke_check.sh must exist and be executable"
+          if [ ! -f scripts/smoke_check.sh ]; then
+            echo "Error: scripts/smoke_check.sh is missing"
             exit 1
           fi
 
