@@ -111,14 +111,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          mkdir -p update
-
           VERSION_CODE="$(grep '^versionCode=' out/release/module.prop | cut -d= -f2)"
           VERSION_NAME="$(grep '^version=' out/release/module.prop | cut -d= -f2 | sed 's/ (.*//')"
           ZIP_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ZIP_NAME}"
           CHANGELOG_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
 
-          cat > update/sui_zygisk.json <<EOF
+          cat > "$RUNNER_TEMP/sui_zygisk.json" <<EOF
           {
             "version": "$VERSION_NAME",
             "versionCode": $VERSION_CODE,
@@ -127,7 +125,7 @@ jobs:
           }
           EOF
 
-          cat update/sui_zygisk.json
+          cat "$RUNNER_TEMP/sui_zygisk.json"
 
       - name: Create GitHub Release
         env:
@@ -143,7 +141,7 @@ jobs:
           gh release create "$TAG" \
             "$ZIP_FILE" \
             "$ZIP_FILE.sha256" \
-            "update/sui_zygisk.json" \
+            "$RUNNER_TEMP/sui_zygisk.json" \
             --title "$TAG" \
             --notes-file release_notes.md \
             $PRERELEASE_FLAG
@@ -154,15 +152,24 @@ jobs:
 
           DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
 
+          # Drop workflow-local changes before switching back to the default branch.
+          git restore --worktree --staged gradle.properties gradlew update/sui_zygisk.json || true
+
           git fetch origin "$DEFAULT_BRANCH"
-          git checkout "$DEFAULT_BRANCH"
+          git checkout -B "$DEFAULT_BRANCH" "origin/$DEFAULT_BRANCH"
 
           mkdir -p update
-          cp "$GITHUB_WORKSPACE/update/sui_zygisk.json" update/sui_zygisk.json
+          cp "$RUNNER_TEMP/sui_zygisk.json" update/sui_zygisk.json
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add update/sui_zygisk.json
-          git commit -m "chore: update KernelSU metadata for ${TAG}" || exit 0
+
+          if git diff --cached --quiet; then
+            echo "KernelSU update metadata unchanged"
+            exit 0
+          fi
+
+          git commit -m "chore: update KernelSU metadata for ${TAG}"
           git push origin "$DEFAULT_BRANCH"
