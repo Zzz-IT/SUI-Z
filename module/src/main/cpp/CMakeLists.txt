@@ -48,7 +48,6 @@ target_link_libraries(util cxx::cxx log nativehelper::nativehelper_header_only)
 
 add_compile_definitions(ZYGISK_MODULE_ID="${ZYGISK_MODULE_ID}")
 
-
 add_library(sui SHARED
         core/main_zygisk.cpp
         core/main.cpp

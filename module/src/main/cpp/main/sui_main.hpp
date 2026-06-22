@@ -30,7 +30,6 @@
 #include <string>
 #include <dirent.h>
 
-
 static constexpr const char* SUI_DATA_DIR = "/data/adb/sui";
 static constexpr const char* LEGACY_SHELL_DIR = "/data/local/tmp/sui_shell";
 static constexpr const char* SHELL_BASE_DIR = "/data/local/tmp";
@@ -60,9 +59,8 @@ static bool is_valid_shell_dir_name(const std::string& name) {
     }
     for (char c : name) {
         bool ok = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || c == '_' || c == '-';
-        if (!ok) {
+        if (!ok)
             return false;
-        }
     }
     return true;
 }

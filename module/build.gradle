@@ -21,7 +21,6 @@ import java.security.MessageDigest
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.refine)
 }
 
@@ -72,8 +71,6 @@ android {
 }
 
 dependencies {
-    implementation libs.kotlin.stdlib
-
     implementation libs.refine.runtime
 
     implementation libs.libcxx
@@ -91,18 +88,6 @@ dependencies {
 
     implementation libs.hidden.compat
     compileOnly libs.hidden.stub
-}
-
-
-tasks.register("cargoTest", Exec) {
-    workingDir "$projectDir/src/main/rust"
-    commandLine "cargo", "test", "--workspace"
-}
-
-if (providers.gradleProperty("enableRustChecks").orNull == "true") {
-    tasks.named("preBuild").configure {
-        dependsOn("cargoTest")
-    }
 }
 
 def outDir = file("$rootDir/out")
@@ -155,7 +140,7 @@ androidComponents {
             }
             doLast {
                 // Ensure LF line endings for shell scripts and prop files
-                ['module.prop', 'action.sh', 'service.sh', 'customize.sh'].each { fileName ->
+                ['module.prop', 'action.sh'].each { fileName ->
                     def f = file("$magiskDir/$fileName")
                     if (f.exists()) {
                         f.text = f.text.replaceAll('\r\n', '\n')

@@ -39,7 +39,6 @@ parcelablelist = { group = "dev.rikka.rikkax.parcelablelist", name = "parcelable
 androidx-annotation = { group = "androidx.annotation", name = "annotation", version.ref = "annotation" }
 androidx-core = { group = "androidx.core", name = "core", version.ref = "core" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core" }
-kotlin-stdlib = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib", version.ref = "kotlin" }
 smart-refresh-kernel = { group = "io.github.scwang90", name = "refresh-layout-kernel", version.ref = "smart-refresh" }
 smart-refresh-header-material = { group = "io.github.scwang90", name = "refresh-header-material", version.ref = "smart-refresh" }
 smart-refresh-header-classics = { group = "io.github.scwang90", name = "refresh-header-classics", version.ref = "smart-refresh" }

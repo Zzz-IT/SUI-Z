@@ -32,6 +32,8 @@ import rikka.sui.util.ParcelUtils;
 
 public final class SystemProcess {
 
+    private static final BridgeService SERVICE = new BridgeService();
+
     private static final class PermissionSnapshot {
         final int[] hiddenUids;
         final int[] rootUids;
@@ -62,11 +64,11 @@ public final class SystemProcess {
 
     private static boolean execActivityTransaction(
             @NonNull Binder binder, int code, Parcel data, Parcel reply, int flags) {
-        return BridgeService.onTransact(code, data, reply, flags);
+        return SERVICE.onTransact(code, data, reply, flags);
     }
 
     public static boolean execTransact(@NonNull Binder binder, int code, long dataObj, long replyObj, int flags) {
-        if (!BridgeService.isServiceTransaction(code)) {
+        if (!SERVICE.isServiceTransaction(code)) {
             return false;
         }
 

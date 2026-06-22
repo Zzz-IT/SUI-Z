@@ -51,12 +51,6 @@ public class Starter {
     }
 
     public static void main(String[] args) {
-        try {
-            LOGGER.i("Kotlin runtime loaded: %s", rikka.sui.runtime.KotlinRuntimeProbe.runtimeName());
-        } catch (Throwable t) {
-            LOGGER.w("Kotlin runtime not found: %s", t.toString());
-        }
-
         Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
             LOGGER.e(e, "Uncaught exception on thread %s", t.getName());
             System.exit(1);
