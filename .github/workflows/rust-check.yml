@@ -1,0 +1,45 @@
+name: Rust Check
+
+on:
+  push:
+    paths:
+      - 'module/src/main/rust/**'
+      - '.github/workflows/rust-check.yml'
+  pull_request:
+    paths:
+      - 'module/src/main/rust/**'
+      - '.github/workflows/rust-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  rust:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cargo fmt
+        working-directory: module/src/main/rust
+        run: cargo fmt --all -- --check
+
+      - name: Cargo test
+        working-directory: module/src/main/rust
+        run: cargo test --workspace
+
+      - name: Cargo clippy
+        working-directory: module/src/main/rust
+        run: cargo clippy --workspace --all-targets -- -D warnings
