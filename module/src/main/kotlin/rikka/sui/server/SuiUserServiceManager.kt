@@ -61,7 +61,7 @@ class SuiUserServiceManager : UserServiceManager() {
             USER_SERVICE_CMD_FORMAT,
             dexPath,
             appProcess,
-            if (debug) " \$USER_SERVICE_CMD_DEBUG" else "",
+            if (debug) " $USER_SERVICE_CMD_DEBUG" else "",
             processName,
             "rikka.sui.server.userservice.Starter",
             token,
@@ -69,7 +69,7 @@ class SuiUserServiceManager : UserServiceManager() {
             classname,
             callingUid,
             if (SuiService.isShellMode()) 2000 else 0,
-            if (debug) " --debug-name=\$processName" else ""
+            if (debug) " --debug-name=$processName" else ""
         )
     }
 }

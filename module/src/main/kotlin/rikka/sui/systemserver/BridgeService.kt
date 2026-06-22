@@ -227,7 +227,7 @@ object BridgeService {
                 if (requestedServerUid == null) {
                     permissionFlags = Bridge.getPermissionFlags(callingUid)
 
-                    if ((permissionFlags & SuiConfig.FLAG_HIDDEN) != 0) {
+                    if ((permissionFlags and SuiConfig.FLAG_HIDDEN) != 0) {
                         return false
                     }
                 }
