@@ -132,6 +132,9 @@ public abstract class Service<
 
         IBinder targetBinder = data.readStrongBinder();
         int targetCode = data.readInt();
+        if (targetBinder == null) {
+            throw new IllegalArgumentException("target binder is null");
+        }
         int targetFlags;
 
         int callingUid = Binder.getCallingUid();
@@ -163,12 +166,17 @@ public abstract class Service<
             newData.appendFrom(data, data.dataPosition(), data.dataAvail());
         } catch (Throwable tr) {
             LOGGER.w(tr, "appendFrom");
+            newData.recycle();
             return;
         }
+
         try {
             long id = Binder.clearCallingIdentity();
-            targetBinder.transact(targetCode, newData, reply, targetFlags);
-            Binder.restoreCallingIdentity(id);
+            try {
+                targetBinder.transact(targetCode, newData, reply, targetFlags);
+            } finally {
+                Binder.restoreCallingIdentity(id);
+            }
         } finally {
             newData.recycle();
         }

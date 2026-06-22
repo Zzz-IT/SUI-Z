@@ -36,25 +36,6 @@ public class Starter {
 
     private static final String TAG = "SuiUserServiceStarter";
 
-    private static int parseServerUid(String[] args) {
-        for (String arg : args) {
-            if (arg.startsWith("--server-uid=")) {
-                try {
-                    int uid = Integer.parseInt(arg.substring(13));
-                    if (uid == BridgeConstants.SERVER_UID_ROOT || uid == BridgeConstants.SERVER_UID_SHELL) {
-                        return uid;
-                    }
-                    Log.w(TAG, "Unsupported --server-uid=" + uid);
-                    return -1;
-                } catch (NumberFormatException e) {
-                    Log.w(TAG, "Invalid --server-uid argument", e);
-                    return -1;
-                }
-            }
-        }
-        return -1;
-    }
-
     public static void main(String[] args) {
         if (Looper.myLooper() == null) {
             if (Looper.getMainLooper() == null) {
@@ -66,7 +47,6 @@ public class Starter {
 
         IBinder service;
         String token;
-        int serverUid = parseServerUid(args);
 
         UserService.setTag(TAG);
         Pair<IBinder, String> result = UserService.create(args);
@@ -79,7 +59,7 @@ public class Starter {
         service = result.first;
         token = result.second;
 
-        if (!sendBinder(service, token, serverUid)) {
+        if (!sendBinder(service, token)) {
             System.exit(1);
         }
 
@@ -94,7 +74,7 @@ public class Starter {
         Looper.prepareMainLooper();
     }
 
-    private static IBinder requestBinderFromBridge(int serverUid) {
+    private static IBinder requestBinderFromBridge() {
         IBinder binder = ServiceManager.getService(BridgeConstants.SERVICE_NAME);
         if (binder == null) return null;
 
@@ -103,15 +83,9 @@ public class Starter {
         try {
             data.writeInterfaceToken(BridgeConstants.SERVICE_DESCRIPTOR);
             data.writeInt(BridgeConstants.ACTION_GET_BINDER);
-            if (serverUid == BridgeConstants.SERVER_UID_ROOT || serverUid == BridgeConstants.SERVER_UID_SHELL) {
-                data.writeInt(serverUid);
-            }
             binder.transact(BridgeConstants.TRANSACTION_CODE, data, reply, 0);
             reply.readException();
-            IBinder received = reply.readStrongBinder();
-            if (received != null) {
-                return received;
-            }
+            return reply.readStrongBinder();
         } catch (Throwable e) {
             e.printStackTrace();
         } finally {
@@ -121,8 +95,8 @@ public class Starter {
         return null;
     }
 
-    private static boolean sendBinder(IBinder binder, String token, int serverUid) {
-        IShizukuService shizukuService = IShizukuService.Stub.asInterface(requestBinderFromBridge(serverUid));
+    private static boolean sendBinder(IBinder binder, String token) {
+        IShizukuService shizukuService = IShizukuService.Stub.asInterface(requestBinderFromBridge());
         if (shizukuService == null) {
             return false;
         }

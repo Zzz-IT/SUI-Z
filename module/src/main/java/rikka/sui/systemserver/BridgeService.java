@@ -207,6 +207,11 @@ public class BridgeService {
                     delegateToken = data.readString();
                 }
 
+                if (isLegacySameUidUserServiceRequest(callingUid, callingPid, requestedServerUid, delegateToken)) {
+                    requestedServerUid = null;
+                    delegateToken = null;
+                }
+
                 if (requestedServerUid != null
                         && !isTrustedServerDelegate(callingUid, callingPid, requestedServerUid, delegateToken)) {
                     LOGGER.w(
@@ -224,9 +229,10 @@ public class BridgeService {
 
                 int permissionFlags = 0;
                 if (requestedServerUid == null) {
-                    permissionFlags = Bridge.getPermissionFlags(callingUid);
+                    permissionFlags = getAutoRoutePermissionFlags(callingUid);
 
-                    if ((permissionFlags & SuiConfig.FLAG_HIDDEN) != 0) {
+                    if (!isServerUid(callingUid)
+                            && (permissionFlags & SuiConfig.FLAG_HIDDEN) != 0) {
                         return false;
                     }
                 }
@@ -349,6 +355,43 @@ public class BridgeService {
             }
         }
         return false;
+    }
+
+    private static boolean isServerUid(int uid) {
+        return uid == BridgeConstants.SERVER_UID_ROOT
+                || uid == BridgeConstants.SERVER_UID_SHELL;
+    }
+
+    private static int getAutoRoutePermissionFlags(int callingUid) {
+        if (callingUid == BridgeConstants.SERVER_UID_ROOT) {
+            return SuiConfig.FLAG_ALLOWED;
+        }
+
+        if (callingUid == BridgeConstants.SERVER_UID_SHELL) {
+            return SuiConfig.FLAG_ALLOWED_SHELL;
+        }
+
+        return Bridge.getPermissionFlags(callingUid);
+    }
+
+    private static boolean isLegacySameUidUserServiceRequest(
+            int callingUid,
+            int callingPid,
+            @Nullable Integer requestedServerUid,
+            @Nullable String delegateToken) {
+        if (requestedServerUid == null || delegateToken != null) {
+            return false;
+        }
+
+        if (callingUid == BridgeConstants.SERVER_UID_ROOT
+                && requestedServerUid == BridgeConstants.SERVER_UID_ROOT
+                && callingPid != rootServerPid) {
+            return true;
+        }
+
+        return callingUid == BridgeConstants.SERVER_UID_SHELL
+                && requestedServerUid == BridgeConstants.SERVER_UID_SHELL
+                && callingPid != shellServerPid;
     }
 
     private boolean isTrustedServerDelegate(int uid, int pid, int requestedServerUid, @Nullable String token) {

@@ -29,7 +29,7 @@ public class SuiUserServiceManager extends UserServiceManager {
     public static final String USER_SERVICE_CMD_DEBUG;
 
     private static final String USER_SERVICE_CMD_FORMAT = "(CLASSPATH='%s' %s%s /system/bin " + "--nice-name='%s' %s "
-            + "--token='%s' --package='%s' --class='%s' --uid=%d --server-uid=%d%s)&";
+            + "--token='%s' --package='%s' --class='%s' --uid=%d%s)&";
 
     static {
         int sdk = Build.VERSION.SDK_INT;
@@ -79,7 +79,6 @@ public class SuiUserServiceManager extends UserServiceManager {
                 packageName,
                 classname,
                 callingUid,
-                SuiService.isShellMode() ? 2000 : 0,
                 debug ? (" " + "--debug-name=" + processName) : "");
     }
 }
