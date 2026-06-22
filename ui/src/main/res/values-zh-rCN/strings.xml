@@ -43,7 +43,7 @@
     <string name="about_version">v%1$s</string>
     <string name="about_license_part1">本项目遵循 GPLv3 在 </string>
     <string name="about_license_part2">GitHub</string>
-    <string name="about_license_part3"> 开源 \nCopyright (c) 2021-2026 Sui Contributors</string>
+    <string name="about_license_part3"> 开源 \nCopyright (c) 2021-2026 SUI Z Contributors</string>
     <string name="about_contributors">贡献者: %1$s</string>
     <string name="toast_request_shortcut">在尝试创建喵...</string>
     <string name="toast_request_shortcut_failed">创建失败喵: %1$s</string>

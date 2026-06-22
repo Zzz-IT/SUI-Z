@@ -1,263 +1,77 @@
-﻿# SUI Z
+# SUI Z
 
-[🇨🇳中文README](https://github.com/Zzz-IT/SUI Z-Z/blob/main/README.zh-CN.md) | [🇯🇵日本語README](https://github.com/Zzz-IT/SUI Z-Z/blob/main/README.ja.md)
+基于 Sui 现代化重构的 Zygisk 模块。提供以 Root/Shell 身份调用 Android Framework API 和运行独立 Java 服务的 Shizuku API。
 
-Modern super user interface (SUI Z) implementation for Android. ~~The name, SUI Z, also comes from [a character](https://github.com/Zzz-IT/SUI Z-Z/issues/1).~~
+SUI Z 不向 `PATH` 中添加二进制文件，也不安装管理器 APP，拥有极佳的隐蔽性。只需安装模块并重启，即可在隐蔽的状态下为支持 Shizuku API 的应用提供特权服务。
+
+## 简介
+
+SUI Z 主要提供两项能力：
+1. 直接使用 Android Framework API（就像在 Root 或 Shell 下通过 Java 调用系统 API 一样）。
+2. 在 Root 或 Shell 下启动由应用定义的 AIDL Java 服务。
+
+这使得开发特权 Android 应用变得非常舒适。相比于传统的 `su` 命令（需要解析文本输出，且只能调用系统预置的命令行工具），使用 SUI Z 可以直接通过 Binder 通信进行结构化数据的传递，速度更快，能力也更强。
+
+## 安装指南
+
+**要求：**
+- Magisk 24.0+，且开启了 Zygisk。
+- 或 KernelSU / APatch 环境下搭配 Zygisk Next、ReZygisk 等 Zygisk 实现。
+- **注意：请勿将 SystemUI（系统界面）和 Settings（设置）加入到 Zygisk 的 DenyList（排除列表）中，否则管理界面将无法正常工作。**
+
+**安装步骤：**
+1. 在 [Releases](https://github.com/Zzz-IT/SUI-Z/releases) 页面下载最新版本的 ZIP 压缩包。
+2. 打开您的 Root 管理器（Magisk / KernelSU / APatch），选择“从本地安装”并刷入下载的 ZIP。
+3. 重启设备。
+
+## 唤出管理界面
+
+SUI Z 默认不会在桌面上创建图标。可以通过以下几种方式唤出 SUI Z 的管理界面：
+- 在系统设置中长按右上角或某处（具体视系统而定），部分设备上可以直接看到 SUI Z 入口。
+- 在默认拨号器中输入 `*#*#784784#*#*`。
+- 在 KernelSU / Magisk 管理器中，点击 SUI Z 模块上的 **操作（Action）** 按钮。
+- （推荐）在唤出一次管理界面后，点击右上角菜单，选择**“添加快捷方式到桌面”**，以后即可通过桌面图标直接打开。
+
+## 权限管理模式
+
+- **询问 / 默认（Ask / Default）**：应用会弹窗请求权限。
+- **允许 Root（Allow root）**：应用将被授予 Root 权限下的服务。
+- **允许 Shell（Allow shell）**：应用将被授予 Shell 权限下的服务。
+- **拒绝（Deny）**：拒绝应用使用 SUI Z。
+- **隐藏（Hide）**：对目标应用彻底隐藏 SUI Z 存在。
+
+---
+
+# SUI Z (English)
+
+Modern superuser interface implementation for Android. Forked and refactored from Sui.
 
 ## Introduction
 
-SUI Z provides Java APIs, namely [Shizuku API](https://github.com/RikkaApps/Shizuku-API), for root / shell apps. It mainly provides two abilities:
-
+SUI Z provides Java APIs, namely the [Shizuku API](https://github.com/RikkaApps/Shizuku-API), for root / shell apps. It mainly provides two abilities:
 1. Use Android Framework APIs directly, almost as if calling system APIs from Java as root or shell.
 2. Start an app-defined AIDL-style Java service under root or shell.
 
-This makes privileged Android app development much more comfortable.
+SUI Z does not add binaries to `PATH` and does not install a standalone manager app, giving it excellent hiding capabilities.
 
-Another advantage is that SUI Z does not add binaries to `PATH` and does not install a standalone manager app. This means we no longer need to spend a huge amount of time fighting apps that detect them.
+## Installation
 
-To be clear, the full implementation of "root" is far more than `su` itself. There is a lot of hard work to be done before it. SUI Z is not a full root solution. It requires an existing root environment and runs as a Zygisk module.
+**Requirements:**
+- Magisk 24.0+ with Zygisk enabled.
+- Or KernelSU / APatch with a Zygisk implementation (e.g., Zygisk Next, ReZygisk).
+- **DO NOT add SystemUI and Settings to the Zygisk DenyList, otherwise the management UI will not work.**
 
-<details>
-  <summary>Why "su" is unfriendly for app development</summary>
+**Steps:**
+1. Download the latest ZIP from [Releases](https://github.com/Zzz-IT/SUI-Z/releases).
+2. Install the ZIP from your Root Manager (Magisk / KernelSU / APatch).
+3. Reboot.
 
-`su`, a "shell" running as root, is too far from the Android world.
+## Management UI
 
-To explain this, we need to briefly talk about how system APIs work. For example, we can use `PackageManager#getInstalledApplications` to get the app list. This is actually an inter-process communication (IPC) process between the app process and the system_server process. The Android Framework just hides the details for us.
-
-Android uses `Binder` for this type of IPC. `Binder` allows the server side to learn the uid and pid of the client side, so system_server can check whether the app has permission to perform the operation.
-
-Back to `su`. In a `su` environment, we usually only have commands provided by the Android system. In the same example, to get the app list with `su`, we have to run `pm list`. This is painful:
-
-1. **Text-based output**: there is no structured data like `PackageInfo` in Java. You have to parse text.
-2. **Slow**: running a command means at least one new process is started, and `PackageManager#getInstalledApplications` is still called inside `pm list`.
-3. **Limited ability**: commands only cover a small part of Android APIs.
-
-Although it is possible to use Java APIs as root with `app_process` through libraries such as libsu or librootjava, transferring Binder objects between the app process and the root process is painful. If you want the root process to run as a daemon, once the app process restarts, there is no cheap way to get the Binder of the root process again.
-
-In fact, for Magisk and other root solutions, making `su` work is not as easy as some people think. Both `su` itself and the communication between `su` and the manager app involve a lot of unpleasant work behind the scenes.
-
-</details>
-
-## User guide
-
-Note: the behavior of existing apps that only support `su` will NOT change.
-
-### Install
-
-You can install SUI Z directly in KernelSU or another compatible root manager such as Magisk or APatch. Or download the zip from [release](https://github.com/Zzz-IT/SUI Z-Z/releases) and use **Install from storage** in your root manager.
-
-SUI Z requires a compatible root environment. On Magisk, this means Magisk 24.0+ with Zygisk enabled. On KernelSU or APatch, it additionally requires a separate Zygisk implementation such as [Zygisk Next](https://github.com/Dr-TSNG/ZygiskNext), [ReZygisk](https://github.com/PerformanC/ReZygisk), or [NeoZygisk](https://github.com/JingMatrix/NeoZygisk). Do not add SystemUI or Settings to Zygisk DenyList, otherwise the injected management UI may not work properly.
-
-### Management UI
-
-* Long press the **System Settings** icon on the home screen to see the SUI Z shortcut
-* In the SUI Z management interface, tap the menu button in the top-right corner and select **Add shortcut to home screen**
-* Enter `*#*#784784#*#*` in the default dialer app
-* Open the SUI Z management interface via the **Action** button in KernelSU/Magisk manager
-
-> **Note:** On some systems, the SUI Z shortcut may not appear when long-pressing Settings.     
-> Additionally, to avoid disturbing users, newer versions have **removed** the feature that automatically prompts to add a shortcut when entering **Developer options**.
-
-### Permission modes
-
-SUI Z stores permission states by UID. The main modes are:
-
-* **Ask / default**: the app can connect to SUI Z and request permission through the normal flow.
-* **Allow root**: the app will be routed to the root backend.
-* **Allow shell**: the app will be routed to the shell backend.
-* **Deny**: deny the app from using SUI Z.
-* **Hide**: hide SUI Z from the target app. When Hide is enabled, the target app UID is intercepted in the Native Binder `execTransact` stage. Its SUI Z bridge transaction is swallowed before it can enter BridgeService and obtain the SUI Z Binder.
-
-When the permission state changes, SUI Z may force-stop affected apps to cut off old Binder handles and make them obtain the correct backend on the next launch.
-
-### Interactive shell
-
-SUI Z provides an interactive shell.
-
-Since SUI Z does not add files to `PATH`, the required files need to be copied manually. See `/data/adb/SUI Z/post-install.example.sh` to learn how to do this automatically.
-
-After the files are correctly copied, use `rish` as `sh` to start an interactive shell.
-
-### adb root
-
-SUI Z also provides optional `adb root` support. When enabled, SUI Z sets up an `adbd` wrapper plus preload hook so that `adbd` can run under the current root implementation's SELinux domain while keeping the expected `adbd` socket label.
-
-This feature is disabled by default. Enable it by creating one of the following marker files from a root shell, then reboot so SUI Z can apply the setup during `post-fs-data`:
-
-* Enable for the next boot only:
-
-  ```sh
-  touch /data/adb/SUI Z/enable_adb_root_once
-  ```
-
-* Enable persistently for every boot:
-
-  ```sh
-  touch /data/adb/SUI Z/enable_adb_root
-  ```
-
-After reboot, use `adb root` normally.
-
-To disable the persistent mode again:
-
-```sh
-rm /data/adb/SUI Z/enable_adb_root
-```
-> This feature depends on your root implementation and SELinux policy. SUI Z checks the required `setcurrent`, `dyntransition`, and `setsockcreate` permissions before enabling it.
-> Existing app behavior does not change. This only affects the device `adbd` path.
-> If your device uses a heavily customized `adbd` implementation, compatibility may vary.
-
-## Application development guide
-
-SUI Z app development should still primarily follow the upstream Shizuku API documentation:
-
-[https://github.com/RikkaApps/Shizuku-API](https://github.com/RikkaApps/Shizuku-API)
-
-Apps are recommended to use `rikka.shizuku.Shizuku` as the unified compatibility layer. Do not maintain a SUI Z-only code path. In this way, one wrapper can support both Shizuku and SUI Z.
-
-In the normal integration pattern, you only need `ShizukuProvider` plus the regular Shizuku API flow. `ShizukuProvider` already attempts SUI Z initialization automatically, so app code usually does not need to import or call `rikka.SUI Z.SUI Z` directly.
-
-If you intentionally disable `ShizukuProvider`'s automatic SUI Z initialization, you can still call `SUI Z.init(packageName)` manually inside your wrapper. If it receives a Binder, it passes it to the Shizuku API layer; if not, the app can continue with the normal Shizuku flow.
-
-Example pattern with the normal auto-initialization flow:
-
-```kotlin
-import android.content.pm.PackageManager
-import android.content.pm.IPackageManager
-import rikka.shizuku.Shizuku
-import rikka.shizuku.ShizukuBinderWrapper
-import rikka.shizuku.SystemServiceHelper
-
-fun initPrivilegedApi() {
-    Shizuku.addBinderReceivedListener {
-        checkShizukuPermission()
-    }
-
-    if (Shizuku.pingBinder()) {
-        checkShizukuPermission()
-    }
-}
-
-fun checkShizukuPermission() {
-    if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-        val binder = SystemServiceHelper.getSystemService("package")
-            ?: return
-
-        val pm = IPackageManager.Stub.asInterface(
-            ShizukuBinderWrapper(binder)
-        )
-
-        pm.isPackageAvailable("android", 0)
-    } else {
-        Shizuku.requestPermission(0)
-    }
-}
-```
-
-If you want manual initialization instead, add `import rikka.SUI Z.SUI Z` and call `SUI Z.init(packageName)` before waiting for the binder.
-
-Common APIs include:
-
-* `Shizuku.pingBinder()`
-* `Shizuku.checkSelfPermission()`
-* `Shizuku.requestPermission(requestCode)`
-* `Shizuku.getUid()`, which can be used to check the current backend identity, for example `0` for root and `2000` for shell
-* `SystemServiceHelper.getSystemService(name)`
-* `ShizukuBinderWrapper`, used to wrap Android Framework service binders
-* `bindUserService()`, used to start an app-defined Java service running as root or shell
-
-## Build
-
-Clone with submodules:
-
-```bash
-git clone --recurse-submodules https://github.com/Zzz-IT/SUI Z-Z.git
-```
-
-Gradle tasks:
-
-`BuildType` could be `Debug` or `Release`.
-
-* `:module:assemble<BuildType>`
-
-  Build the module. After assemble finishes, the flashable module zip will be generated to `out`.
-
-* `:module:zip<BuildType>`
-
-  Generate the flashable module zip to `out`.
-
-* `:module:push<BuildType>`
-
-  Push the zip with adb to `/data/local/tmp`.
-
-* `:module:flash<BuildType>`
-
-  Install the zip with `adb shell su -c magisk --install-module`.
-
-* `:module:flashWithKsud<BuildType>`
-
-  Install the zip with `adb shell su -c ksud module install`.
-
-* `:module:flashAndReboot<BuildType>`
-
-  Install the zip and reboot the device.
-
-* `:module:flashWithKsudAndReboot<BuildType>`
-
-  Install the zip with ksud and reboot the device.
-
-For example:
-
-```bash
-./gradlew :module:assembleRelease
-./gradlew :module:zipRelease
-./gradlew :module:flashRelease
-```
-
-## Internals
-
-SUI Z requires [Zygisk](https://github.com/topjohnwu/zygisk-module-sample). Zygisk allows us to inject into system_server, SystemUI, Settings and related app processes.
-
-Overall, there are five main parts, and an optional `adb root` path:
-
-* **Root process**
-
-  This is a root process started by the root implementation during the post-fs-data stage. It starts a Java server that implements Shizuku API and private APIs used by other parts.
-
-  The root server is the main source of permission configuration. It maintains the UID permission database and syncs hidden, root allowed, shell allowed, denied and default mode states to system_server.
-
-* **Shell process**
-
-  The shell server runs as shell and serves apps granted with shell permission.
-
-  It loads UID permission states from the configuration file mirrored by the root server. When the shell backend needs to show a permission confirmation window, it delegates the request to the root server, which then triggers the SystemUI confirmation UI.
-
-* **SystemServer inject**
-
-  * Hooks `Binder#execTransact` to intercept the dedicated Binder transaction used by SUI Z inside `system_server`
-  * Keeps the root binder, shell binder, and permission caches for hidden/root allowed/shell allowed/denied/default mode
-  * Chooses which backend Binder to return based on the UID's effective permission: root gets the root binder, shell gets the shell binder
-  * For hidden UIDs, blocks the SUI Z bridge request directly; for ask/deny, still returns the root binder so the client can continue through the normal permission or denial result flow
-
-* **SystemUI inject**
-
-  * Opens the SUI Z APK fd from SUI Z service and loads SUI Z `Resources` plus the permission dialog class
-  * Attaches to the service and shows permission confirmation dialogs on callback
-  * Registers secret-code style entry points and, when triggered, launches the SUI Z management UI hosted in the Settings process
-
-* **Settings inject**
-
-  * Opens the SUI Z APK fd from SUI Z service and loads SUI Z `Resources` plus `SUI ZActivity`
-  * Replaces `ActivityThread` instrumentation during Settings process startup
-  * Maintains dynamic/pinned shortcuts and handles pinned-shortcut requests relayed from SystemUI
-  * When the target `Activity` intent carries the SUI Z extra and token, instantiates and displays `SUI ZActivity` instead
-
-* **adbd wrapper / preload (optional)**
-
-  * During `post-fs-data`, when `adb root` support is enabled, SUI Z prepares an `adbd` wrapper and preload library for `/apex/com.android.adbd/bin/adbd` or `/system/bin/adbd`
-  * The wrapper rewrites `--root_seclabel=...` to the current root implementation's SELinux domain and injects `LD_PRELOAD`
-  * The preload hook intercepts `selinux_android_setcon()` / `setcon()` so `adbd` can switch into the root domain while restoring `sockcreate` to the expected `adbd` label
+SUI Z does not show an app icon in the launcher by default. You can open the management UI via:
+- Enter `*#*#784784#*#*` in the default dialer app.
+- Tap the **Action** button on the SUI Z module in your Root Manager.
+- Once opened, you can tap the menu in the top-right corner to **Add a shortcut to the home screen**.
 
 ## License
-
 SUI Z is licensed under GPL-3.0-or-later.

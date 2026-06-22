@@ -1,4 +1,4 @@
-﻿/*
+/*
  * This file is part of SUI Z.
  *
  * SUI Z is free software: you can redistribute it and/or modify
@@ -452,6 +452,7 @@ class ManagementFragment : AppFragment() {
                 "Kr328" to "https://github.com/Kr328",
                 "binyaminyblatt" to "https://github.com/binyaminyblatt",
                 "Re*Index.(ot_inc)" to "https://github.com/reindex-ot",
+                "Zzz" to "https://github.com/Zzz-IT",
             )
 
             val contributorsNamesString = githubLinks.keys.joinToString(", ")

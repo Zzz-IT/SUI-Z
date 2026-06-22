@@ -43,7 +43,7 @@
     <string name="about_version">v%1$s</string>
     <string name="about_license_part1">This project is licensed under GPLv3 and open source on </string>
     <string name="about_license_part2">GitHub</string>
-    <string name="about_license_part3">.\nCopyright (c) 2021-2026 Sui Contributors</string>
+    <string name="about_license_part3">.\nCopyright (c) 2021-2026 SUI Z Contributors</string>
     <string name="about_contributors">Contributors: %1$s</string>
     <string name="toast_request_shortcut">Trying to create...</string>
     <string name="toast_request_shortcut_failed">Failed to create: %1$s</string>
