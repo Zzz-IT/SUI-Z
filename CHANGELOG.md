@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.0
+
+### Changed
+- 优化了 BridgeService 中对于客户端获取 binder 的兼容性及重试机制（修复 GKD 等客户端部分连接失败问题）。
+- 全面更新项目名称为 SUI Z，添加了核心贡献者并在 UI 界面中予以展示。
+- 更新重写了说明文档（README.md）。
+- 增强并完善了 CI smoke_check 测试流程与错误日志诊断。
+
 ## v1.0.0
 
 ### Added
