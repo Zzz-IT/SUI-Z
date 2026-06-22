@@ -30,6 +30,8 @@
 #include <string>
 #include <dirent.h>
 
+#include "rust/rust_bridge.hpp"
+
 static constexpr const char* SUI_DATA_DIR = "/data/adb/sui";
 static constexpr const char* LEGACY_SHELL_DIR = "/data/local/tmp/sui_shell";
 static constexpr const char* SHELL_BASE_DIR = "/data/local/tmp";
@@ -51,18 +53,7 @@ static std::string trim_copy(const std::string& input) {
 }
 
 static bool is_valid_shell_dir_name(const std::string& name) {
-    if (name == "sui_shell") {
-        return true;
-    }
-    if (name.rfind(SHELL_DIR_PREFIX, 0) != 0) {
-        return false;
-    }
-    for (char c : name) {
-        bool ok = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || c == '_' || c == '-';
-        if (!ok)
-            return false;
-    }
-    return true;
+    return suiz_validate_shell_dir_name(name.c_str()) == 1;
 }
 
 static bool read_file_line(const char* path, std::string& out) {

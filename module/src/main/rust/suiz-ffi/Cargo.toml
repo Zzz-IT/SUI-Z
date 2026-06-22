@@ -1,0 +1,11 @@
+[package]
+name = "suiz-ffi"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+suiz-core = { path = "../suiz-core" }
+libc = "0.2"

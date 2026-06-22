@@ -45,3 +45,17 @@
 -dontwarn com.android.**
 -dontwarn androidx.**
 -dontwarn sun.misc.**
+
+# app_process entry
+-keep class rikka.sui.server.Starter {
+    public static void main(java.lang.String[]);
+}
+
+# system_server / bridge classes may be loaded reflectively or through native glue
+-keep class rikka.sui.systemserver.** { *; }
+-keep class rikka.sui.server.** { *; }
+
+# Kotlin runtime used by sui.dex in app_process/system_server contexts
+-keep class kotlin.** { *; }
+-keep class kotlin.jvm.internal.** { *; }
+-dontwarn kotlin.**

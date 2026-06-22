@@ -48,6 +48,24 @@ target_link_libraries(util cxx::cxx log nativehelper::nativehelper_header_only)
 
 add_compile_definitions(ZYGISK_MODULE_ID="${ZYGISK_MODULE_ID}")
 
+if (ANDROID_ABI STREQUAL "arm64-v8a")
+    set(RUST_TARGET "aarch64-linux-android")
+elseif (ANDROID_ABI STREQUAL "armeabi-v7a")
+    set(RUST_TARGET "armv7-linux-androideabi")
+elseif (ANDROID_ABI STREQUAL "x86")
+    set(RUST_TARGET "i686-linux-android")
+elseif (ANDROID_ABI STREQUAL "x86_64")
+    set(RUST_TARGET "x86_64-linux-android")
+else()
+    message(FATAL_ERROR "Unsupported ANDROID_ABI for Rust: ${ANDROID_ABI}")
+endif()
+
+set(RUST_LIB_PATH
+        "${CMAKE_SOURCE_DIR}/rust/target/${RUST_TARGET}/release/libsuiz_ffi.a")
+
+add_library(suiz_rust STATIC IMPORTED)
+set_target_properties(suiz_rust PROPERTIES IMPORTED_LOCATION "${RUST_LIB_PATH}")
+
 add_library(sui SHARED
         core/main_zygisk.cpp
         core/main.cpp
@@ -56,11 +74,11 @@ add_library(sui SHARED
         core/bridge_service.cpp
         core/manager_process.cpp
         core/settings_process.cpp)
-target_link_libraries(sui util cxx::cxx log nativehelper::nativehelper_header_only)
+target_link_libraries(sui util suiz_rust cxx::cxx log nativehelper::nativehelper_header_only)
 set_target_properties(sui PROPERTIES LINK_FLAGS_RELEASE -s)
 
 add_executable(libmain.so main/main.cpp)
-target_link_libraries(libmain.so util cxx::cxx log nativehelper::nativehelper_header_only)
+target_link_libraries(libmain.so util suiz_rust cxx::cxx log nativehelper::nativehelper_header_only)
 set_target_properties(libmain.so PROPERTIES LINK_FLAGS_RELEASE -s)
 
 add_executable(libadbd_wrapper.so
@@ -74,7 +92,7 @@ target_link_libraries(adbd_preload cxx::cxx log)
 set_target_properties(adbd_preload PROPERTIES LINK_FLAGS_RELEASE -s)
 
 add_executable(libsepolicy_checker.so checker/checker_main.cpp)
-target_link_libraries(libsepolicy_checker.so util cxx::cxx log nativehelper::nativehelper_header_only)
+target_link_libraries(libsepolicy_checker.so util suiz_rust cxx::cxx log nativehelper::nativehelper_header_only)
 set_target_properties(libsepolicy_checker.so PROPERTIES LINK_FLAGS_RELEASE -s)
 
 if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
