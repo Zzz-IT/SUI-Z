@@ -49,8 +49,8 @@ public class BridgeService {
 
     private static volatile IBinder rootServiceBinder;
     private static volatile IBinder shellServiceBinder;
-    private static final int RETRY_MAX = 3;
-    private static final long RETRY_DELAY_MS = 1000L;
+    private static final int RETRY_MAX = 5;
+    private static final long RETRY_DELAY_MS = 300L;
     private static volatile boolean serviceStarted;
     private static volatile int rootServerPid = -1;
     private static volatile int shellServerPid = -1;
@@ -259,14 +259,6 @@ public class BridgeService {
 
                     if (i + 1 < RETRY_MAX) {
                         try {
-                            LOGGER.w(
-                                    "binder missing, wait %d ms: uid=%d pid=%d requested=%s flags=0x%x",
-                                    RETRY_DELAY_MS,
-                                    callingUid,
-                                    callingPid,
-                                    requestedServerUid == null ? "auto" :
-                                            requestedServerUid == BridgeConstants.SERVER_UID_ROOT ? "root" : "shell",
-                                    permissionFlags);
                             Thread.sleep(RETRY_DELAY_MS);
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
@@ -282,9 +274,10 @@ public class BridgeService {
                         requestedServerUid == null ? "auto" :
                                 requestedServerUid == BridgeConstants.SERVER_UID_ROOT ? "root" : "shell",
                         permissionFlags,
-                        requestedBinder == rootServiceBinder ? "root"
+                        requestedBinder == null ? "null"
+                                : requestedBinder == rootServiceBinder ? "root"
                                 : requestedBinder == shellServiceBinder ? "shell"
-                                : "null");
+                                : "unknown");
 
                 if (reply != null) {
                     reply.writeNoException();
