@@ -1,10 +1,10 @@
-name: Package Structure Check
+name: Android Package Check
 
 on:
   push:
     branches: [ "master", "main", "dev" ]
   pull_request:
-    branches: [ "master", "main" ]
+    branches: [ "master", "main", "dev" ]
   workflow_dispatch:
 
 permissions:
@@ -15,9 +15,9 @@ defaults:
     shell: bash
 
 jobs:
-  check-package:
+  package:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout Code
@@ -54,13 +54,21 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
+      - name: Static guards
+        run: bash scripts/static_guard.sh
+
+      - name: Assemble Debug
+        run: ./gradlew :module:assembleDebug --stacktrace
+
+      - name: Assemble Release
+        run: ./gradlew :module:assembleRelease --stacktrace
+
       - name: Build Release ZIP
         run: ./gradlew :module:zipRelease --stacktrace
 
-      - name: Check Package Structure
+      - name: Smoke check package
         run: |
           set -euo pipefail
-
           ZIP_FILE="$(find out -maxdepth 1 -type f -name "*.zip" | sort | head -n 1)"
           if [ -z "$ZIP_FILE" ]; then
             echo "Error: Output ZIP not found"
