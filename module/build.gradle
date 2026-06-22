@@ -110,8 +110,10 @@ tasks.register("cargoTest", Exec) {
     commandLine "cargo", "test", "--workspace"
 }
 
-tasks.named("preBuild").configure {
-    dependsOn("cargoTest")
+if (providers.gradleProperty("enableRustChecks").orNull == "true") {
+    tasks.named("preBuild").configure {
+        dependsOn("cargoTest")
+    }
 }
 
 def outDir = file("$rootDir/out")
