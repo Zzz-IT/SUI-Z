@@ -241,11 +241,15 @@ object BridgeService {
                         } else {
                             shellServiceBinder
                         }
-                    } else if ((permissionFlags & SuiConfig.FLAG_ALLOWED) != 0) {
+                    } else if ((permissionFlags and SuiConfig.FLAG_ALLOWED) != 0) {
                         requestedBinder = rootServiceBinder
-                    } else if ((permissionFlags & SuiConfig.FLAG_ALLOWED_SHELL) != 0) {
+                    } else if ((permissionFlags and SuiConfig.FLAG_ALLOWED_SHELL) != 0) {
                         requestedBinder = shellServiceBinder
                     } else {
+                        // Keep upstream-compatible behavior:
+                        // Ask / denied / default still need root binder so clients can attach
+                        // and receive normal permission request or denial result.
+                        // Hidden is handled above.
                         requestedBinder = rootServiceBinder
                     }
 

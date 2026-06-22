@@ -88,7 +88,7 @@ class SuiConfigManager : ConfigManager() {
                 LOGGER.e("SuiConfigManager: failed to read database, starting empty")
                 return SuiConfig()
             }
-            LOGGER.i("SuiConfigManager: Loaded \${config.packages.size} packages from database.")
+            LOGGER.i("SuiConfigManager: Loaded ${config.packages.size} packages from database.")
             return config
         }
     }
@@ -246,13 +246,13 @@ class SuiConfigManager : ConfigManager() {
             val sb = java.lang.StringBuilder()
             synchronized(this) {
                 for (entry in config.packages) {
-                    sb.append(entry.uid).append(":").append(entry.flags).append("\\n")
+                    sb.append(entry.uid).append(":").append(entry.flags).append('\n')
                 }
             }
             val dir = getShellDir()
             if (!dir.exists()) dir.mkdirs()
             val file = File(dir, SHELL_CONFIG_FILENAME)
-            val tempFile = File(dir, "\$SHELL_CONFIG_FILENAME.tmp")
+            val tempFile = File(dir, SHELL_CONFIG_FILENAME + ".tmp")
             FileOutputStream(tempFile).use { fos ->
                 fos.write(sb.toString().toByteArray(StandardCharsets.UTF_8))
                 fos.fd.sync()
@@ -382,7 +382,7 @@ class SuiConfigManager : ConfigManager() {
     }
 
     fun update(uid: Int, mask: Int, values: Int) {
-        LOGGER.i("SuiConfigManager: update uid=\$uid mask=\$mask val=\$values")
+        LOGGER.i("SuiConfigManager: update uid=$uid mask=$mask val=$values")
         var needRemove = false
         var needUpdate = false
         var finalFlags = 0
@@ -400,7 +400,7 @@ class SuiConfigManager : ConfigManager() {
                 invalidateUidCacheLocked()
                 needUpdate = true
                 finalFlags = newValue
-                LOGGER.i("SuiConfigManager: Added new entry for uid \$uid")
+                LOGGER.i("SuiConfigManager: Added new entry for uid $uid")
             } else {
                 val newValue = (entry!!.flags and mask.inv()) or (mask and values)
                 if (newValue == entry!!.flags) {
@@ -411,13 +411,13 @@ class SuiConfigManager : ConfigManager() {
                     packageIndex.remove(uid)
                     invalidateUidCacheLocked()
                     needRemove = true
-                    LOGGER.i("SuiConfigManager: Removed entry for uid \$uid")
+                    LOGGER.i("SuiConfigManager: Removed entry for uid $uid")
                 } else {
                     entry!!.flags = newValue
                     invalidateUidCacheLocked()
                     needUpdate = true
                     finalFlags = newValue
-                    LOGGER.i("SuiConfigManager: Updated entry for uid \$uid")
+                    LOGGER.i("SuiConfigManager: Updated entry for uid $uid")
                 }
             }
         }
@@ -465,7 +465,7 @@ class SuiConfigManager : ConfigManager() {
             }
         }
         set(flags) {
-            LOGGER.i("SuiConfigManager: Setting default permission flags: \$flags")
+            LOGGER.i("SuiConfigManager: Setting default permission flags: $flags")
             val value = flags and SuiConfig.MASK_PERMISSION
             if (value == 0) {
                 remove(DEFAULT_UID)
