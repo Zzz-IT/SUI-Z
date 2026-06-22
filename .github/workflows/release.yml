@@ -64,9 +64,10 @@ jobs:
           } >> gradle.properties
 
       - name: Make gradlew executable
-        run: |
-          set -euo pipefail
-          chmod +x ./gradlew
+        run: chmod +x ./gradlew
+
+      - name: Static guards
+        run: bash scripts/static_guard.sh
 
       - name: Extract changelog
         run: |
@@ -77,13 +78,10 @@ jobs:
           echo "Release notes:"
           cat release_notes.md
 
-      - name: Static guards
-        run: bash scripts/static_guard.sh
-
       - name: Build release ZIP
         run: |
           set -euo pipefail
-          ./gradlew :module:zipRelease --stacktrace
+          ./gradlew :module:zipRelease --stacktrace --no-daemon
 
       - name: Locate ZIP
         run: |
@@ -107,7 +105,6 @@ jobs:
       - name: Generate SHA256
         run: |
           set -euo pipefail
-
           sha256sum "$ZIP_FILE" | tee "$ZIP_FILE.sha256"
 
       - name: Create GitHub Release

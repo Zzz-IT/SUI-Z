@@ -222,14 +222,13 @@ class SuiConfigManager : ConfigManager() {
     }
 
     private fun refreshClientAllowedStateAfterShellReload() {
-        val service = SuiService.getInstance()
-        if (service == null || service.clientManager == null) {
-            return
-        }
+        val service = SuiService.getInstance() ?: return
+        val clientManager = service.getClientManager() ?: return
 
-        for (record in service.clientManager.clients) {
+        for (record in clientManager.clients) {
             val entry = find(record.uid)
-            val allowed = entry != null && ((entry.flags and (SuiConfig.FLAG_ALLOWED or SuiConfig.FLAG_ALLOWED_SHELL)) != 0)
+            val allowed = entry != null &&
+                    ((entry.flags and (SuiConfig.FLAG_ALLOWED or SuiConfig.FLAG_ALLOWED_SHELL)) != 0)
             record.allowed = allowed
         }
     }

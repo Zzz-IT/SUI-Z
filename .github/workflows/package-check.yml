@@ -58,13 +58,13 @@ jobs:
         run: bash scripts/static_guard.sh
 
       - name: Assemble Debug
-        run: ./gradlew :module:assembleDebug --stacktrace
+        run: ./gradlew :module:assembleDebug --stacktrace --no-daemon
 
       - name: Assemble Release
-        run: ./gradlew :module:assembleRelease --stacktrace
+        run: ./gradlew :module:assembleRelease --stacktrace --no-daemon
 
       - name: Build Release ZIP
-        run: ./gradlew :module:zipRelease --stacktrace
+        run: ./gradlew :module:zipRelease --stacktrace --no-daemon
 
       - name: Smoke check package
         run: |

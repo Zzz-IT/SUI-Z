@@ -38,7 +38,7 @@ jobs:
 
       - name: Cargo test
         working-directory: module/src/main/rust
-        run: cargo test --workspace
+        run: cargo test --workspace --locked=false
 
       - name: Cargo clippy
         working-directory: module/src/main/rust

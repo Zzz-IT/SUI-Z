@@ -93,17 +93,6 @@ dependencies {
     compileOnly libs.hidden.stub
 }
 
-def rustTargets = [
-        "arm64-v8a"  : "aarch64-linux-android",
-        "armeabi-v7a": "armv7-linux-androideabi",
-        "x86"        : "i686-linux-android",
-        "x86_64"     : "x86_64-linux-android",
-]
-
-tasks.register("cargoBuildRelease", Exec) {
-    workingDir "$projectDir/src/main/rust"
-    commandLine "cargo", "build", "--release", "-p", "suiz-ffi"
-}
 
 tasks.register("cargoTest", Exec) {
     workingDir "$projectDir/src/main/rust"
