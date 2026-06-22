@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.1
+
+### Fixed
+- 修复了 GKD 客户端 Shizuku 用户服务的连接兼容性，支持通过调用 UID (calling UID) 自动路由 Binder 请求。
+- 移除了启动 User Service 时冗余的 `--server-uid` 命令行参数。
+- 增强了远程 Binder 事务 (`transactRemote`) 的异常安全性，确保即使 transact 抛出异常也必然通过 `try-finally` 结构恢复调用方的 Identity，防止 Identity 泄露。
+- 新增了 `targetBinder == null` 的拦截校验。
+
 ## v1.1.0
 
 ### Changed
