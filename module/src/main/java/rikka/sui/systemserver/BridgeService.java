@@ -49,6 +49,8 @@ public class BridgeService {
 
     private static volatile IBinder rootServiceBinder;
     private static volatile IBinder shellServiceBinder;
+    private static final int RETRY_MAX = 3;
+    private static final long RETRY_DELAY_MS = 1000L;
     private static volatile boolean serviceStarted;
     private static volatile int rootServerPid = -1;
     private static volatile int shellServerPid = -1;
@@ -205,44 +207,84 @@ public class BridgeService {
                     delegateToken = data.readString();
                 }
 
-                IBinder requestedBinder = null;
+                if (requestedServerUid != null
+                        && !isTrustedServerDelegate(callingUid, callingPid, requestedServerUid, delegateToken)) {
+                    LOGGER.w(
+                            "reject server binder request: uid=%d pid=%d target=%d",
+                            callingUid,
+                            callingPid,
+                            requestedServerUid);
 
-                if (requestedServerUid != null) {
-                    if (!isTrustedServerDelegate(callingUid, callingPid, requestedServerUid, delegateToken)) {
-                        LOGGER.w(
-                                "reject server binder request: uid=%d pid=%d target=%d",
-                                callingUid,
-                                callingPid,
-                                requestedServerUid);
-
-                        if (reply != null) {
-                            reply.writeNoException();
-                            reply.writeStrongBinder(null);
-                        }
-                        return true;
+                    if (reply != null) {
+                        reply.writeNoException();
+                        reply.writeStrongBinder(null);
                     }
+                    return true;
+                }
 
-                    requestedBinder = requestedServerUid == BridgeConstants.SERVER_UID_ROOT
-                            ? rootServiceBinder
-                            : shellServiceBinder;
-
-                } else {
-                    int permissionFlags = Bridge.getPermissionFlags(callingUid);
+                int permissionFlags = 0;
+                if (requestedServerUid == null) {
+                    permissionFlags = Bridge.getPermissionFlags(callingUid);
 
                     if ((permissionFlags & SuiConfig.FLAG_HIDDEN) != 0) {
                         return false;
                     }
+                }
 
-                    if ((permissionFlags & SuiConfig.FLAG_DENIED) != 0) {
-                        requestedBinder = null;
+                IBinder requestedBinder = null;
+
+                for (int i = 0; i < RETRY_MAX; i++) {
+                    if (requestedServerUid != null) {
+                        requestedBinder = requestedServerUid == BridgeConstants.SERVER_UID_ROOT
+                                ? rootServiceBinder
+                                : shellServiceBinder;
+
+                    } else if ((permissionFlags & SuiConfig.FLAG_ALLOWED) != 0) {
+                        requestedBinder = rootServiceBinder;
 
                     } else if ((permissionFlags & SuiConfig.FLAG_ALLOWED_SHELL) != 0) {
                         requestedBinder = shellServiceBinder;
 
                     } else {
+                        // Keep upstream-compatible behavior:
+                        // ask / denied / default still need root binder so clients can attach
+                        // and receive normal permission request or denial result.
+                        // Hidden is handled above.
                         requestedBinder = rootServiceBinder;
                     }
+
+                    if (requestedBinder != null) {
+                        break;
+                    }
+
+                    if (i + 1 < RETRY_MAX) {
+                        try {
+                            LOGGER.w(
+                                    "binder missing, wait %d ms: uid=%d pid=%d requested=%s flags=0x%x",
+                                    RETRY_DELAY_MS,
+                                    callingUid,
+                                    callingPid,
+                                    requestedServerUid == null ? "auto" :
+                                            requestedServerUid == BridgeConstants.SERVER_UID_ROOT ? "root" : "shell",
+                                    permissionFlags);
+                            Thread.sleep(RETRY_DELAY_MS);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                    }
                 }
+
+                LOGGER.d(
+                        "get binder: uid=%d pid=%d requested=%s flags=0x%x result=%s",
+                        callingUid,
+                        callingPid,
+                        requestedServerUid == null ? "auto" :
+                                requestedServerUid == BridgeConstants.SERVER_UID_ROOT ? "root" : "shell",
+                        permissionFlags,
+                        requestedBinder == rootServiceBinder ? "root"
+                                : requestedBinder == shellServiceBinder ? "shell"
+                                : "null");
 
                 if (reply != null) {
                     reply.writeNoException();
