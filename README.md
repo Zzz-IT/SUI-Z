@@ -2,7 +2,7 @@
 
 基于 Sui 现代化重构的 Zygisk 模块。提供以 Root/Shell 身份调用 Android Framework API 和运行独立 Java 服务的 Shizuku API。
 
-SUI Z 不向 `PATH` 中添加二进制文件，也不安装管理器 APP，拥有极佳的隐蔽性。只需安装模块并重启，即可在隐蔽的状态下为支持 Shizuku API 的应用提供特权服务。
+SUI Z 不向 PATH 中添加二进制文件，也不会在桌面暴露常规启动图标；管理界面以内置 sui.apk 形式随模块提供。只需安装模块并重启，即可在隐蔽的状态下为支持 Shizuku API 的应用提供特权服务。
 
 ## 简介
 
@@ -52,7 +52,7 @@ SUI Z provides Java APIs, namely the [Shizuku API](https://github.com/RikkaApps/
 1. Use Android Framework APIs directly, almost as if calling system APIs from Java as root or shell.
 2. Start an app-defined AIDL-style Java service under root or shell.
 
-SUI Z does not add binaries to `PATH` and does not install a standalone manager app, giving it excellent hiding capabilities.
+SUI Z does not add binaries to PATH and does not expose a regular launcher icon; the management UI is bundled as sui.apk inside the module.
 
 ## Installation
 

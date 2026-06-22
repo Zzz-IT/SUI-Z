@@ -100,7 +100,7 @@ androidComponents {
         def buildTypeLowered = variant.buildType.toLowerCase()
 
         def buildMetadata = "${moduleVersionCode.toString()}-${gitCommitId}-${buildTypeLowered}"
-        def zipName = "Sui-${moduleVersion}_${buildMetadata}.zip"
+        def zipName = "SUI-Z-${moduleVersion}_${buildMetadata}.zip"
         def magiskDir = file("$outDir/${buildTypeLowered}")
 
         tasks.register("prepareMagiskFiles${variantCapped}", Sync) {

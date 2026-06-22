@@ -14,12 +14,24 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 unzip -q "$ZIP_FILE" -d "$TMP_DIR"
 
-test -f "$TMP_DIR/module.prop"
-test -f "$TMP_DIR/sui.dex"
-test -f "$TMP_DIR/sui.apk"
+test -f "$TMP_DIR/module.prop" || { echo "Error: missing module.prop"; exit 1; }
+test -f "$TMP_DIR/sui.dex" || { echo "Error: missing sui.dex"; exit 1; }
+test -f "$TMP_DIR/sui.apk" || { echo "Error: missing sui.apk"; exit 1; }
 
-grep -q '^id=zygisk-suiz$' "$TMP_DIR/module.prop"
-grep -q '^name=Zygisk - SUI Z$' "$TMP_DIR/module.prop"
+test -s "$TMP_DIR/sui.dex" || { echo "Error: empty sui.dex"; exit 1; }
+test -s "$TMP_DIR/sui.apk" || { echo "Error: empty sui.apk"; exit 1; }
+
+grep -q '^id=zygisk-suiz$' "$TMP_DIR/module.prop" || {
+  echo "Error: module.prop id mismatch"
+  grep '^id=' "$TMP_DIR/module.prop" || true
+  exit 1
+}
+
+grep -q '^name=Zygisk - SUI Z$' "$TMP_DIR/module.prop" || {
+  echo "Error: module.prop name mismatch"
+  grep '^name=' "$TMP_DIR/module.prop" || true
+  exit 1
+}
 
 if grep -q 'xiaotong6666.github.io/Sui' "$TMP_DIR/module.prop"; then
   echo "Error: old updateJson detected"
