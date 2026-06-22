@@ -119,7 +119,7 @@ androidComponents {
                         versionCode: moduleVersionCode.toString(),
                         author     : moduleAuthor,
                         description: moduleDescription,
-                        updateJson : "https://zzz-it.github.io/SUI-Z/sui_zygisk.json",
+                        updateJson : "https://raw.githubusercontent.com/Zzz-IT/SUI-Z/master/update/sui_zygisk.json",
                 ])
             }
             from(templatePath) {

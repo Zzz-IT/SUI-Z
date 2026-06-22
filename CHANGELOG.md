@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.2
+
+### Added
+- 支持 KernelSU/Magisk/APatch 自动更新检测，使用 raw.githubusercontent.com 托管更新配置 `sui_zygisk.json`。
+- 在 release 自动化工作流中，支持自动生成 update JSON，上传为 Release 附件，并自动回写提交至仓库默认分支。
+
 ## v1.1.1
 
 ### Fixed

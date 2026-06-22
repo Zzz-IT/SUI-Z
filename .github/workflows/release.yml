@@ -107,6 +107,28 @@ jobs:
 
           sha256sum "$ZIP_FILE" | tee "$ZIP_FILE.sha256"
 
+      - name: Generate KernelSU update metadata
+        run: |
+          set -euo pipefail
+
+          mkdir -p update
+
+          VERSION_CODE="$(grep '^versionCode=' out/release/module.prop | cut -d= -f2)"
+          VERSION_NAME="$(grep '^version=' out/release/module.prop | cut -d= -f2 | sed 's/ (.*//')"
+          ZIP_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ZIP_NAME}"
+          CHANGELOG_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+
+          cat > update/sui_zygisk.json <<EOF
+          {
+            "version": "$VERSION_NAME",
+            "versionCode": $VERSION_CODE,
+            "zipUrl": "$ZIP_URL",
+            "changelog": "$CHANGELOG_URL"
+          }
+          EOF
+
+          cat update/sui_zygisk.json
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -121,6 +143,26 @@ jobs:
           gh release create "$TAG" \
             "$ZIP_FILE" \
             "$ZIP_FILE.sha256" \
+            "update/sui_zygisk.json" \
             --title "$TAG" \
             --notes-file release_notes.md \
             $PRERELEASE_FLAG
+
+      - name: Commit KernelSU update metadata
+        run: |
+          set -euo pipefail
+
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+
+          git fetch origin "$DEFAULT_BRANCH"
+          git checkout "$DEFAULT_BRANCH"
+
+          mkdir -p update
+          cp "$GITHUB_WORKSPACE/update/sui_zygisk.json" update/sui_zygisk.json
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add update/sui_zygisk.json
+          git commit -m "chore: update KernelSU metadata for ${TAG}" || exit 0
+          git push origin "$DEFAULT_BRANCH"

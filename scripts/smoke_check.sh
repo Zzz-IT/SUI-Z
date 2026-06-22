@@ -33,6 +33,12 @@ grep -q '^name=Zygisk - SUI Z$' "$TMP_DIR/module.prop" || {
   exit 1
 }
 
+grep -q '^updateJson=https://raw.githubusercontent.com/Zzz-IT/SUI-Z/master/update/sui_zygisk.json$' "$TMP_DIR/module.prop" || {
+  echo "Error: module.prop updateJson mismatch"
+  grep '^updateJson=' "$TMP_DIR/module.prop" || true
+  exit 1
+}
+
 if grep -q 'xiaotong6666.github.io/Sui' "$TMP_DIR/module.prop"; then
   echo "Error: old updateJson detected"
   exit 1
