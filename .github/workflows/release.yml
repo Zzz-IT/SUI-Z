@@ -77,6 +77,9 @@ jobs:
           echo "Release notes:"
           cat release_notes.md
 
+      - name: Static guards
+        run: bash scripts/static_guard.sh
+
       - name: Build release ZIP
         run: |
           set -euo pipefail
@@ -99,7 +102,7 @@ jobs:
       - name: Smoke check ZIP
         run: |
           set -euo pipefail
-          bash scripts/smoke_check.sh "$ZIP_FILE"
+          bash scripts/smoke_check.sh "$ZIP_FILE" "$TAG"
 
       - name: Generate SHA256
         run: |
