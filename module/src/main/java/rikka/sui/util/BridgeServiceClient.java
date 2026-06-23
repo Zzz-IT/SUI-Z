@@ -24,6 +24,8 @@ import android.os.Looper;
 import android.os.Parcel;
 import android.os.ParcelFileDescriptor;
 import android.os.ServiceManager;
+import android.os.SystemClock;
+import android.util.Log;
 import androidx.annotation.Nullable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
@@ -46,13 +48,23 @@ public class BridgeServiceClient {
     private static final long SHORTCUT_TOKEN_FETCH_RETRY_DELAY_MS = 400;
     private static final long SHORTCUT_TOKEN_MAIN_THREAD_WAIT_MS = 2000;
 
+    private static final int BRIDGE_BINDER_RETRY_MAX = 10;
+    private static final long BRIDGE_BINDER_RETRY_DELAY_MS = 100L;
+    private static final long BRIDGE_BINDER_MAIN_THREAD_TIMEOUT_MS = 300L;
+
+    private static volatile long shortcutTokenLastFailureUptime;
+    private static final long SHORTCUT_TOKEN_FAILURE_BACKOFF_MS = 3000L;
+
+    private static volatile long binderLastFailureUptime;
+    private static final long BINDER_FAILURE_BACKOFF_MS = 1000L;
+
     private static final IBinder.DeathRecipient DEATH_RECIPIENT = () -> {
         binder = null;
         service = null;
         invalidateShortcutToken();
     };
 
-    private static IBinder requestBinderFromBridge() {
+    private static IBinder requestBinderFromBridgeOnce() {
         IBinder binder = ServiceManager.getService(BridgeConstants.SERVICE_NAME);
         if (binder == null) return null;
 
@@ -68,11 +80,34 @@ public class BridgeServiceClient {
                 return received;
             }
         } catch (Throwable e) {
-            e.printStackTrace();
+            Log.w("BridgeServiceClient", "request binder from bridge failed", e);
         } finally {
             data.recycle();
             reply.recycle();
         }
+        return null;
+    }
+
+    private static IBinder requestBinderFromBridgeWithRetry() {
+        long deadline = SystemClock.uptimeMillis()
+                + (Looper.myLooper() == Looper.getMainLooper()
+                ? BRIDGE_BINDER_MAIN_THREAD_TIMEOUT_MS
+                : BRIDGE_BINDER_RETRY_MAX * BRIDGE_BINDER_RETRY_DELAY_MS);
+
+        while (SystemClock.uptimeMillis() < deadline) {
+            IBinder binder = requestBinderFromBridgeOnce();
+            if (binder != null) {
+                return binder;
+            }
+
+            try {
+                Thread.sleep(BRIDGE_BINDER_RETRY_DELAY_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+        }
+
         return null;
     }
 
@@ -116,9 +151,31 @@ public class BridgeServiceClient {
 
     public static IShizukuService getService() {
         if (service == null) {
-            setBinder(requestBinderFromBridge());
+            long now = SystemClock.uptimeMillis();
+            if (now - binderLastFailureUptime < BINDER_FAILURE_BACKOFF_MS) {
+                return null;
+            }
+
+            IBinder newBinder = requestBinderFromBridgeWithRetry();
+            if (newBinder == null) {
+                binderLastFailureUptime = now;
+                return null;
+            }
+
+            setBinder(newBinder);
+            binderLastFailureUptime = 0;
         }
         return service;
+    }
+
+    public static void prefetchService() {
+        if (service != null) {
+            return;
+        }
+
+        Thread thread = new Thread(() -> setBinder(requestBinderFromBridgeWithRetry()), "SuiBridgePrefetch");
+        thread.setDaemon(true);
+        thread.start();
     }
 
     public static ParcelFileDescriptor openApk() {
@@ -140,7 +197,7 @@ public class BridgeServiceClient {
                 }
             }
         } catch (Throwable e) {
-            e.printStackTrace();
+            Log.w("BridgeServiceClient", "openApk failed", e);
         } finally {
             data.recycle();
             reply.recycle();
@@ -179,7 +236,7 @@ public class BridgeServiceClient {
         } catch (TimeoutException e) {
             return shortcutTokenCache;
         } catch (ExecutionException e) {
-            e.printStackTrace();
+            Log.w("BridgeServiceClient", "getShortcutToken execution failed", e);
             return null;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -188,6 +245,11 @@ public class BridgeServiceClient {
     }
 
     private static FutureTask<String> startShortcutTokenFetch() {
+        long now = SystemClock.uptimeMillis();
+        if (now - shortcutTokenLastFailureUptime < SHORTCUT_TOKEN_FAILURE_BACKOFF_MS) {
+            return null;
+        }
+
         synchronized (shortcutTokenLock) {
             if (shortcutTokenCache != null) {
                 return null;
@@ -214,6 +276,7 @@ public class BridgeServiceClient {
 
             String token = fetchShortcutTokenOnce();
             if (token != null) {
+                shortcutTokenLastFailureUptime = 0;
                 synchronized (shortcutTokenLock) {
                     if (generation != shortcutTokenGeneration) {
                         return null;
@@ -234,6 +297,7 @@ public class BridgeServiceClient {
                 return null;
             }
         }
+        shortcutTokenLastFailureUptime = SystemClock.uptimeMillis();
         return null;
     }
 
@@ -250,7 +314,7 @@ public class BridgeServiceClient {
             reply.readException();
             return reply.readString();
         } catch (Throwable e) {
-            e.printStackTrace();
+            Log.w("BridgeServiceClient", "fetchShortcutTokenOnce failed", e);
             return null;
         } finally {
             data.recycle();

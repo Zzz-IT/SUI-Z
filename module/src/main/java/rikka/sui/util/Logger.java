@@ -57,7 +57,12 @@ public class Logger {
         }
     }
 
+    private static final boolean DEBUG = false;
+
     public boolean isLoggable(String tag, int level) {
+        if (level <= Log.DEBUG) {
+            return DEBUG;
+        }
         return true;
     }
 

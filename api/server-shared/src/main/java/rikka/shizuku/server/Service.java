@@ -147,10 +147,6 @@ public abstract class Service<
             targetFlags = flags;
         }
 
-        LOGGER.d(
-                "transact: uid=%d, descriptor=%s, code=%d",
-                Binder.getCallingUid(), targetBinder.getInterfaceDescriptor(), targetCode);
-
         if (targetBinder instanceof Binder) {
             long id = Binder.clearCallingIdentity();
             try {

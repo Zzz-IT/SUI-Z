@@ -33,24 +33,39 @@ import rikka.sui.util.BridgeConstants;
 
 public class BridgeService {
 
-    private static final IBinder.DeathRecipient DEATH_RECIPIENT_ROOT = () -> {
-        rootServiceBinder = null;
-        rootServerPid = -1;
-        rootRegisterToken = null;
-        serviceStarted = false;
-        LOGGER.i("root service is dead");
-    };
-    private static final IBinder.DeathRecipient DEATH_RECIPIENT_SHELL = () -> {
-        shellServiceBinder = null;
-        shellServerPid = -1;
-        shellRegisterToken = null;
-        LOGGER.i("shell service is dead");
-    };
+    private static final Object LOCK = new Object();
 
     private static volatile IBinder rootServiceBinder;
     private static volatile IBinder shellServiceBinder;
-    private static final int RETRY_MAX = 5;
-    private static final long RETRY_DELAY_MS = 300L;
+    private static volatile IBinder.DeathRecipient rootDeathRecipient;
+    private static volatile IBinder.DeathRecipient shellDeathRecipient;
+
+    private static void clearRootIfCurrent(IBinder deadBinder) {
+        synchronized (LOCK) {
+            if (rootServiceBinder != deadBinder) {
+                return;
+            }
+            rootServiceBinder = null;
+            rootDeathRecipient = null;
+            rootServerPid = -1;
+            rootRegisterToken = null;
+            serviceStarted = false;
+        }
+        LOGGER.i("root service is dead");
+    }
+
+    private static void clearShellIfCurrent(IBinder deadBinder) {
+        synchronized (LOCK) {
+            if (shellServiceBinder != deadBinder) {
+                return;
+            }
+            shellServiceBinder = null;
+            shellDeathRecipient = null;
+            shellServerPid = -1;
+            shellRegisterToken = null;
+        }
+        LOGGER.i("shell service is dead");
+    }
     private static volatile boolean serviceStarted;
     private static volatile int rootServerPid = -1;
     private static volatile int shellServerPid = -1;
@@ -77,7 +92,13 @@ public class BridgeService {
             return false;
         }
 
-        IBinder.DeathRecipient recipient = isRoot ? DEATH_RECIPIENT_ROOT : DEATH_RECIPIENT_SHELL;
+        IBinder.DeathRecipient recipient = () -> {
+            if (isRoot) {
+                clearRootIfCurrent(binder);
+            } else {
+                clearShellIfCurrent(binder);
+            }
+        };
 
         try {
             binder.linkToDeath(recipient, 0);
@@ -86,43 +107,38 @@ public class BridgeService {
             return false;
         }
 
-        try {
+        synchronized (LOCK) {
             if (isRoot) {
                 IBinder old = rootServiceBinder;
                 if (old == null) {
                     PackageReceiver.register();
-                } else {
+                } else if (rootDeathRecipient != null) {
                     try {
-                        old.unlinkToDeath(DEATH_RECIPIENT_ROOT, 0);
+                        old.unlinkToDeath(rootDeathRecipient, 0);
                     } catch (Throwable e) {
                         LOGGER.w(e, "unlink old root binder");
                     }
                 }
 
                 rootServiceBinder = binder;
-                LOGGER.i("root binder received");
+                rootDeathRecipient = recipient;
             } else {
                 IBinder old = shellServiceBinder;
-                if (old != null) {
+                if (old != null && shellDeathRecipient != null) {
                     try {
-                        old.unlinkToDeath(DEATH_RECIPIENT_SHELL, 0);
+                        old.unlinkToDeath(shellDeathRecipient, 0);
                     } catch (Throwable e) {
                         LOGGER.w(e, "unlink old shell binder");
                     }
                 }
 
                 shellServiceBinder = binder;
-                LOGGER.i("shell binder received");
+                shellDeathRecipient = recipient;
             }
-            return true;
-        } catch (Throwable e) {
-            try {
-                binder.unlinkToDeath(recipient, 0);
-            } catch (Throwable ignored) {
-            }
-            LOGGER.w(e, "sendBinder failed");
-            return false;
         }
+
+        LOGGER.i(isRoot ? "root binder received" : "shell binder received");
+        return true;
     }
 
     public boolean isServiceTransaction(int code) {
@@ -133,9 +149,6 @@ public class BridgeService {
         data.enforceInterface(BridgeConstants.SERVICE_DESCRIPTOR);
 
         int action = data.readInt();
-        LOGGER.d(
-                "onTransact: action=%d, callingUid=%d, callingPid=%d",
-                action, Binder.getCallingUid(), Binder.getCallingPid());
 
         switch (action) {
             case BridgeConstants.ACTION_SEND_BINDER: {
@@ -237,53 +250,7 @@ public class BridgeService {
                     }
                 }
 
-                IBinder requestedBinder = null;
-
-                for (int i = 0; i < RETRY_MAX; i++) {
-                    if (requestedServerUid != null) {
-                        requestedBinder = requestedServerUid == BridgeConstants.SERVER_UID_ROOT
-                                ? rootServiceBinder
-                                : shellServiceBinder;
-
-                    } else if ((permissionFlags & SuiConfig.FLAG_ALLOWED) != 0) {
-                        requestedBinder = rootServiceBinder;
-
-                    } else if ((permissionFlags & SuiConfig.FLAG_ALLOWED_SHELL) != 0) {
-                        requestedBinder = shellServiceBinder;
-
-                    } else {
-                        // Keep upstream-compatible behavior:
-                        // ask / denied / default still need root binder so clients can attach
-                        // and receive normal permission request or denial result.
-                        // Hidden is handled above.
-                        requestedBinder = rootServiceBinder;
-                    }
-
-                    if (requestedBinder != null) {
-                        break;
-                    }
-
-                    if (i + 1 < RETRY_MAX) {
-                        try {
-                            Thread.sleep(RETRY_DELAY_MS);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            break;
-                        }
-                    }
-                }
-
-                LOGGER.d(
-                        "get binder: uid=%d pid=%d requested=%s flags=0x%x result=%s",
-                        callingUid,
-                        callingPid,
-                        requestedServerUid == null ? "auto" :
-                                requestedServerUid == BridgeConstants.SERVER_UID_ROOT ? "root" : "shell",
-                        permissionFlags,
-                        requestedBinder == null ? "null"
-                                : requestedBinder == rootServiceBinder ? "root"
-                                : requestedBinder == shellServiceBinder ? "shell"
-                                : "unknown");
+                IBinder requestedBinder = selectBinder(requestedServerUid, permissionFlags);
 
                 if (reply != null) {
                     reply.writeNoException();
@@ -360,6 +327,24 @@ public class BridgeService {
     private static boolean isServerUid(int uid) {
         return uid == BridgeConstants.SERVER_UID_ROOT
                 || uid == BridgeConstants.SERVER_UID_SHELL;
+    }
+
+    private static IBinder selectBinder(@Nullable Integer requestedServerUid, int permissionFlags) {
+        if (requestedServerUid != null) {
+            return requestedServerUid == BridgeConstants.SERVER_UID_ROOT
+                    ? rootServiceBinder
+                    : shellServiceBinder;
+        }
+
+        if ((permissionFlags & SuiConfig.FLAG_ALLOWED) != 0) {
+            return rootServiceBinder;
+        }
+
+        if ((permissionFlags & SuiConfig.FLAG_ALLOWED_SHELL) != 0) {
+            return shellServiceBinder;
+        }
+
+        return rootServiceBinder;
     }
 
     private static int getAutoRoutePermissionFlags(int callingUid) {

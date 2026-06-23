@@ -24,25 +24,32 @@ import static rikka.sui.server.ServerConstants.LOGGER;
 import android.content.Context;
 import android.ddm.DdmHandleAppName;
 import android.os.ServiceManager;
+import android.os.SystemClock;
 import java.util.Objects;
 
 public class Starter {
 
     private static boolean waitSystemService(String name, long timeoutMs) {
-        long deadline = System.currentTimeMillis() + timeoutMs;
+        long deadline = SystemClock.uptimeMillis() + timeoutMs;
+        boolean logged = false;
 
         while (ServiceManager.getService(name) == null) {
-            if (System.currentTimeMillis() >= deadline) {
+            long now = SystemClock.uptimeMillis();
+            if (now >= deadline) {
                 LOGGER.e("service %s is not started after %d ms", name, timeoutMs);
                 return false;
             }
 
+            if (!logged) {
+                LOGGER.i("service %s is not started, waiting...", name);
+                logged = true;
+            }
+
             try {
-                LOGGER.i("service " + name + " is not started, wait 1s.");
-                Thread.sleep(1000);
+                Thread.sleep(Math.min(1000L, deadline - now));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                LOGGER.w(e.getMessage(), e);
+                LOGGER.w(e, "wait service interrupted");
                 return false;
             }
         }

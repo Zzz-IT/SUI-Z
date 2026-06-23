@@ -74,7 +74,10 @@ public class Starter {
         Looper.prepareMainLooper();
     }
 
-    private static IBinder requestBinderFromBridge() {
+    private static final int BRIDGE_BINDER_RETRY_MAX = 20;
+    private static final long BRIDGE_BINDER_RETRY_DELAY_MS = 100L;
+
+    private static IBinder requestBinderFromBridgeOnce() {
         IBinder binder = ServiceManager.getService(BridgeConstants.SERVICE_NAME);
         if (binder == null) return null;
 
@@ -87,7 +90,7 @@ public class Starter {
             reply.readException();
             return reply.readStrongBinder();
         } catch (Throwable e) {
-            e.printStackTrace();
+            Log.w(TAG, "request binder from bridge failed", e);
         } finally {
             data.recycle();
             reply.recycle();
@@ -95,8 +98,25 @@ public class Starter {
         return null;
     }
 
+    private static IBinder requestBinderFromBridgeWithRetry() {
+        for (int i = 0; i < BRIDGE_BINDER_RETRY_MAX; i++) {
+            IBinder binder = requestBinderFromBridgeOnce();
+            if (binder != null) {
+                return binder;
+            }
+
+            try {
+                Thread.sleep(BRIDGE_BINDER_RETRY_DELAY_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+        }
+        return null;
+    }
+
     private static boolean sendBinder(IBinder binder, String token) {
-        IShizukuService shizukuService = IShizukuService.Stub.asInterface(requestBinderFromBridge());
+        IShizukuService shizukuService = IShizukuService.Stub.asInterface(requestBinderFromBridgeWithRetry());
         if (shizukuService == null) {
             return false;
         }
