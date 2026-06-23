@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.1.3
+
+### Changed
+- 将前端生成的桌面快捷方式名字改为 SUI Z。
+- 优化快捷方式生成的提示文案，去掉冗余字样并在生成成功时给予明确提示。
+
+### Fixed
+- 修复了 `sendBinder()` 中更新 `rootServerPid` 和 `shellServerPid` 的竞态条件，确保 Pid 赋值与 Binder 设置保持原子性，提高 `isTrustedServerDelegate()` 的判断稳定性。
+- 移除了 `system_server` (BridgeService) 中的重试 `sleep`，优化为无阻塞快速路由。
+- 默认在 Release 版关闭 DEBUG 和 VERBOSE 日志输出，使异常输出受控，显著减少 Binder 高频路径的日志量。
+- 修复了 UserService / GKD 路径的等待机制，改进了重试逻辑（包含 deadline、backoff 及负缓存策略），应对系统时间跃变时更加稳定。
+- 修复 Binder 死亡回调逻辑，防止误清新的 Binder，处理了潜在的内存泄露和竞态问题。
+
 ## v1.1.2
 
 ### Added
