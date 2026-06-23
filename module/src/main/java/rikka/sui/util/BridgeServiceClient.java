@@ -158,7 +158,7 @@ public class BridgeServiceClient {
 
             IBinder newBinder = requestBinderFromBridgeWithRetry();
             if (newBinder == null) {
-                binderLastFailureUptime = now;
+                binderLastFailureUptime = SystemClock.uptimeMillis();
                 return null;
             }
 
@@ -168,12 +168,37 @@ public class BridgeServiceClient {
         return service;
     }
 
+    private static final Object binderPrefetchLock = new Object();
+    private static boolean binderPrefetchRunning;
+
     public static void prefetchService() {
         if (service != null) {
             return;
         }
 
-        Thread thread = new Thread(() -> setBinder(requestBinderFromBridgeWithRetry()), "SuiBridgePrefetch");
+        synchronized (binderPrefetchLock) {
+            if (service != null || binderPrefetchRunning) {
+                return;
+            }
+            binderPrefetchRunning = true;
+        }
+
+        Thread thread = new Thread(() -> {
+            try {
+                IBinder newBinder = requestBinderFromBridgeWithRetry();
+                if (newBinder != null) {
+                    setBinder(newBinder);
+                    binderLastFailureUptime = 0;
+                } else {
+                    binderLastFailureUptime = SystemClock.uptimeMillis();
+                }
+            } finally {
+                synchronized (binderPrefetchLock) {
+                    binderPrefetchRunning = false;
+                }
+            }
+        }, "SuiBridgePrefetch");
+
         thread.setDaemon(true);
         thread.start();
     }

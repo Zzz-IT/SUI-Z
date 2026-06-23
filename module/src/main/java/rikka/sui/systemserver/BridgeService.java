@@ -86,7 +86,7 @@ public class BridgeService {
         return serviceStarted;
     }
 
-    private boolean sendBinder(IBinder binder, boolean isRoot) {
+    private boolean sendBinder(IBinder binder, boolean isRoot, int serverPid) {
         if (binder == null) {
             LOGGER.w("received empty binder");
             return false;
@@ -107,38 +107,49 @@ public class BridgeService {
             return false;
         }
 
-        synchronized (LOCK) {
-            if (isRoot) {
-                IBinder old = rootServiceBinder;
-                if (old == null) {
-                    PackageReceiver.register();
-                } else if (rootDeathRecipient != null) {
-                    try {
-                        old.unlinkToDeath(rootDeathRecipient, 0);
-                    } catch (Throwable e) {
-                        LOGGER.w(e, "unlink old root binder");
+        try {
+            synchronized (LOCK) {
+                if (isRoot) {
+                    IBinder old = rootServiceBinder;
+                    if (old == null) {
+                        PackageReceiver.register();
+                    } else if (rootDeathRecipient != null) {
+                        try {
+                            old.unlinkToDeath(rootDeathRecipient, 0);
+                        } catch (Throwable e) {
+                            LOGGER.w(e, "unlink old root binder");
+                        }
                     }
-                }
 
-                rootServiceBinder = binder;
-                rootDeathRecipient = recipient;
-            } else {
-                IBinder old = shellServiceBinder;
-                if (old != null && shellDeathRecipient != null) {
-                    try {
-                        old.unlinkToDeath(shellDeathRecipient, 0);
-                    } catch (Throwable e) {
-                        LOGGER.w(e, "unlink old shell binder");
+                    rootServiceBinder = binder;
+                    rootDeathRecipient = recipient;
+                    rootServerPid = serverPid;
+                } else {
+                    IBinder old = shellServiceBinder;
+                    if (old != null && shellDeathRecipient != null) {
+                        try {
+                            old.unlinkToDeath(shellDeathRecipient, 0);
+                        } catch (Throwable e) {
+                            LOGGER.w(e, "unlink old shell binder");
+                        }
                     }
-                }
 
-                shellServiceBinder = binder;
-                shellDeathRecipient = recipient;
+                    shellServiceBinder = binder;
+                    shellDeathRecipient = recipient;
+                    shellServerPid = serverPid;
+                }
             }
-        }
 
-        LOGGER.i(isRoot ? "root binder received" : "shell binder received");
-        return true;
+            LOGGER.i(isRoot ? "root binder received" : "shell binder received");
+            return true;
+        } catch (Throwable e) {
+            try {
+                binder.unlinkToDeath(recipient, 0);
+            } catch (Throwable ignored) {
+            }
+            LOGGER.w(e, "sendBinder failed");
+            return false;
+        }
     }
 
     public boolean isServiceTransaction(int code) {
@@ -175,18 +186,12 @@ public class BridgeService {
                     boolean ok;
                     long identity = Binder.clearCallingIdentity();
                     try {
-                        ok = sendBinder(binder, callingUid == 0);
+                        ok = sendBinder(binder, callingUid == 0, callingPid);
                     } finally {
                         Binder.restoreCallingIdentity(identity);
                     }
 
-                    if (ok) {
-                        if (callingUid == 0) {
-                            rootServerPid = callingPid;
-                        } else {
-                            shellServerPid = callingPid;
-                        }
-                    } else {
+                    if (!ok) {
                         LOGGER.w(
                                 "reject binder registration: uid=%d pid=%d isRoot=%s",
                                 callingUid,

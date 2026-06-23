@@ -126,7 +126,7 @@ public class Starter {
         try {
             shizukuService.attachUserService(binder, data);
         } catch (Throwable e) {
-            Log.w(TAG, Log.getStackTraceString(e));
+            Log.w(TAG, "attach user service failed", e);
             return false;
         }
         return true;
