@@ -222,8 +222,8 @@ public class SuiShortcut {
         }
 
         return new ShortcutInfo.Builder(context, SHORTCUT_ID)
-                .setShortLabel("Sui")
-                .setLongLabel("Sui")
+                .setShortLabel("SUI Z")
+                .setLongLabel("SUI Z")
                 .setIcon(icon)
                 .setIntent(getIntent(context, true, token))
                 .build();

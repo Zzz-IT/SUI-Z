@@ -47,4 +47,5 @@
     <string name="about_contributors">Contributors: %1$s</string>
     <string name="toast_request_shortcut">Trying to create...</string>
     <string name="toast_request_shortcut_failed">Failed to create: %1$s</string>
+    <string name="toast_request_shortcut_success">Created successfully</string>
 </resources>

@@ -46,4 +46,5 @@
   <string name="about_contributors">貢献者: %1$s</string>
   <string name="toast_request_shortcut">作成しようとしています...</string>
   <string name="toast_request_shortcut_failed">作成に失敗しました: %1$s</string>
+  <string name="toast_request_shortcut_success">作成に成功しました</string>
 </resources>

@@ -45,6 +45,7 @@
     <string name="about_license_part2">GitHub</string>
     <string name="about_license_part3"> 開源 \nCopyright (c) 2021-2026 SUI Z Contributors</string>
     <string name="about_contributors">貢獻者: %1$s</string>
-    <string name="toast_request_shortcut">在嘗試建立喵...</string>
-    <string name="toast_request_shortcut_failed">建立失敗喵: %1$s</string>
+    <string name="toast_request_shortcut">在嘗試建立...</string>
+    <string name="toast_request_shortcut_failed">建立失敗: %1$s</string>
+    <string name="toast_request_shortcut_success">建立成功</string>
 </resources>

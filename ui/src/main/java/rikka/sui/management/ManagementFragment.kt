@@ -317,7 +317,7 @@ class ManagementFragment : AppFragment() {
                 R.id.action_add_shortcut -> {
                     try {
                         BridgeServiceClient.requestPinnedShortcut()
-                        Toast.makeText(requireContext(), R.string.toast_request_shortcut, Toast.LENGTH_SHORT).show()
+                        Toast.makeText(requireContext(), R.string.toast_request_shortcut_success, Toast.LENGTH_SHORT).show()
                     } catch (e: Throwable) {
                         android.util.Log.e("SUI ZShortcutRPC", "Failed to request pinned shortcut via RPC", e)
                         Toast.makeText(requireContext(), getString(R.string.toast_request_shortcut_failed, e.message), Toast.LENGTH_LONG).show()
