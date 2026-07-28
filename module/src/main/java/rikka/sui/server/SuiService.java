@@ -412,27 +412,26 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
         return callingUid == systemUiUid;
     }
 
-    private void syncUidsToSystemServer() {
+    private final Runnable uidSyncRunnable = () -> {
         int[] hiddenUids = configManager.getHiddenUids();
         int[] rootUids = getRootUidsWithSystem();
         int[] deniedUids = configManager.getDeniedUids();
         int[] shellUids = configManager.getShellUids();
         int defaultFlags = configManager.getDefaultPermissionFlags();
 
-        long version = uidSyncVersion.incrementAndGet();
+        BridgeServiceClient.syncUids(
+                hiddenUids,
+                rootUids,
+                deniedUids,
+                shellUids,
+                defaultFlags);
+    };
 
-        uidSyncExecutor.execute(() -> {
-            if (version != uidSyncVersion.get()) {
-                return;
-            }
+    private final Runnable uidSyncTaskDispatcher = () -> uidSyncExecutor.execute(uidSyncRunnable);
 
-            BridgeServiceClient.syncUids(
-                    hiddenUids,
-                    rootUids,
-                    deniedUids,
-                    shellUids,
-                    defaultFlags);
-        });
+    private void syncUidsToSystemServer() {
+        mainHandler.removeCallbacks(uidSyncTaskDispatcher);
+        mainHandler.post(uidSyncTaskDispatcher);
     }
 
     private void flushShellRoutingState() {

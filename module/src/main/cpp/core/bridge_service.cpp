@@ -270,6 +270,9 @@ static jobject requireBinder(JNIEnv* env, bool force = false) {
     }
 
 cleanup:
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+    }
     if (data) {
         env->CallVoidMethod(data, recycleMethod);
         if (env->ExceptionCheck()) env->ExceptionClear();

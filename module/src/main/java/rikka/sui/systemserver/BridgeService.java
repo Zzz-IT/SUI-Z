@@ -48,7 +48,6 @@ public class BridgeService {
             rootServiceBinder = null;
             rootDeathRecipient = null;
             rootServerPid = -1;
-            rootRegisterToken = null;
             serviceStarted = false;
         }
         LOGGER.i("root service is dead");
@@ -62,7 +61,6 @@ public class BridgeService {
             shellServiceBinder = null;
             shellDeathRecipient = null;
             shellServerPid = -1;
-            shellRegisterToken = null;
         }
         LOGGER.i("shell service is dead");
     }

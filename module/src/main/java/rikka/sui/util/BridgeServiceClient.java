@@ -46,7 +46,7 @@ public class BridgeServiceClient {
 
     private static final int SHORTCUT_TOKEN_FETCH_RETRY_COUNT = 5;
     private static final long SHORTCUT_TOKEN_FETCH_RETRY_DELAY_MS = 400;
-    private static final long SHORTCUT_TOKEN_MAIN_THREAD_WAIT_MS = 2000;
+    private static final long SHORTCUT_TOKEN_MAIN_THREAD_WAIT_MS = 200L;
 
     private static final int BRIDGE_BINDER_RETRY_MAX = 10;
     private static final long BRIDGE_BINDER_RETRY_DELAY_MS = 100L;
@@ -151,19 +151,23 @@ public class BridgeServiceClient {
 
     public static IShizukuService getService() {
         if (service == null) {
-            long now = SystemClock.uptimeMillis();
-            if (now - binderLastFailureUptime < BINDER_FAILURE_BACKOFF_MS) {
-                return null;
-            }
+            synchronized (BridgeServiceClient.class) {
+                if (service == null) {
+                    long now = SystemClock.uptimeMillis();
+                    if (now - binderLastFailureUptime < BINDER_FAILURE_BACKOFF_MS) {
+                        return null;
+                    }
 
-            IBinder newBinder = requestBinderFromBridgeWithRetry();
-            if (newBinder == null) {
-                binderLastFailureUptime = SystemClock.uptimeMillis();
-                return null;
-            }
+                    IBinder newBinder = requestBinderFromBridgeWithRetry();
+                    if (newBinder == null) {
+                        binderLastFailureUptime = SystemClock.uptimeMillis();
+                        return null;
+                    }
 
-            setBinder(newBinder);
-            binderLastFailureUptime = 0;
+                    setBinder(newBinder);
+                    binderLastFailureUptime = 0;
+                }
+            }
         }
         return service;
     }
