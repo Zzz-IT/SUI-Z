@@ -86,8 +86,6 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
                 t.setDaemon(true);
                 return t;
             });
-    private final java.util.concurrent.atomic.AtomicLong uidSyncVersion =
-            new java.util.concurrent.atomic.AtomicLong();
     private final java.util.concurrent.ConcurrentHashMap<Integer, Long> lastInvalidationTime =
             new java.util.concurrent.ConcurrentHashMap<>();
 
