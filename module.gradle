@@ -29,9 +29,9 @@ ext {
 
     moduleName = "Zygisk - SUI Z"
     moduleAuthor = "Zzz"
-    moduleDescription = "基于 Sui 现代化重构的 Zygisk 模块。提供以 Root/Shell 身份调用 Android Framework API 和运行独立 Java 服务的 Shizuku API。SUI Z 不向 PATH 中添加二进制文件，也不安装管理器 APP，隐蔽性强。需要 Magisk 24.0+，且不要将 SystemUI 和 Settings 加入 DenyList。"
+    moduleDescription = "基于 Sui 重构的 Zygisk 模块，内置 Shizuku API。需 Magisk 24.0+，请勿将 SystemUI 和 Settings 加入 DenyList。"
     moduleVersionMinor = 1
-    moduleVersionPatch = 3
+    moduleVersionPatch = 4
     moduleVersion = "v${api_version_major}.${moduleVersionMinor}.${moduleVersionPatch}"
     moduleVersionCode = gitCommitCount
 

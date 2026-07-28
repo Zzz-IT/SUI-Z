@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.1.4
+
+### Fixed
+- 修复了 Shell 服务 Binder 死亡时误清空注册 Token 导致无法重新连通的问题。
+- 修复了 `BridgeServiceClient.getService()` 缺乏双重检查锁引发的多线程并发 IPC 及重复 unlink 风险。
+- 修复了 `bridge_service.cpp` 中 JNI 抛出未捕获异常时直接调用 `recycle()` 导致 Native 崩溃隐患。
+
+### Optimized
+- 优化了主线程获取快捷方式 Token 的等待时长（从 2000ms 降至 200ms），防止 UI 假死与 ANR 风险。
+
 ## v1.1.3
 
 ### Changed
