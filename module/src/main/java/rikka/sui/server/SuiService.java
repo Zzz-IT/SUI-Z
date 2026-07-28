@@ -86,6 +86,8 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
                 t.setDaemon(true);
                 return t;
             });
+    private final java.util.concurrent.atomic.AtomicLong uidSyncVersion =
+            new java.util.concurrent.atomic.AtomicLong();
     private final java.util.concurrent.ConcurrentHashMap<Integer, Long> lastInvalidationTime =
             new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -410,26 +412,27 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
         return callingUid == systemUiUid;
     }
 
-    private final Runnable uidSyncRunnable = () -> {
+    private void syncUidsToSystemServer() {
         int[] hiddenUids = configManager.getHiddenUids();
         int[] rootUids = getRootUidsWithSystem();
         int[] deniedUids = configManager.getDeniedUids();
         int[] shellUids = configManager.getShellUids();
         int defaultFlags = configManager.getDefaultPermissionFlags();
 
-        BridgeServiceClient.syncUids(
-                hiddenUids,
-                rootUids,
-                deniedUids,
-                shellUids,
-                defaultFlags);
-    };
+        long version = uidSyncVersion.incrementAndGet();
 
-    private final Runnable uidSyncTaskDispatcher = () -> uidSyncExecutor.execute(uidSyncRunnable);
+        uidSyncExecutor.execute(() -> {
+            if (version != uidSyncVersion.get()) {
+                return;
+            }
 
-    private void syncUidsToSystemServer() {
-        mainHandler.removeCallbacks(uidSyncTaskDispatcher);
-        mainHandler.post(uidSyncTaskDispatcher);
+            BridgeServiceClient.syncUids(
+                    hiddenUids,
+                    rootUids,
+                    deniedUids,
+                    shellUids,
+                    defaultFlags);
+        });
     }
 
     private void flushShellRoutingState() {
