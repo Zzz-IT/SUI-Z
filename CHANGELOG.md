@@ -1,5 +1,43 @@
 # Changelog
 
+## v1.1.5-rc.1
+
+### Optimized
+- 显著降低看门狗空闲耗电：`service.sh` 由每 5 秒 `pidof` 轮询改为缓存 pid + `read` 内置命令校验 `/proc`，稳态巡检间隔 120 秒。原先约 17,000 次/天的进程派生降至约 720 次/天，且稳态下不再扫描 `/proc`。
+- 为看门狗加入崩溃循环退避：5 分钟内重启超过 5 次则退避 300 秒，避免守护进程异常时整机被反复唤醒。
+- `post-fs-data.sh` 中 API ≤ 23 的 oat 权限修复循环由 10Hz 无上限（约 864,000 次 `chmod -R`/天）改为 2 秒间隔、最多 300 次后自行退出。
+- 收敛管理界面内存占用：`AppIconCache` 的 Bitmap LRU 由堆的 1/4 改为 1/16 并夹在 [8MB, 64MB]。512MB 堆上从 128MB 降至 32MB。
+- 合并管理界面重复线程池：`AppIconCache` 与 `AppLabelCache` 各自创建 `cores/2` 个线程（8 核机共 8 条常驻后台线程），改为共用 `UiWorkerDispatcher` 一个有界池（上限 2 条）。
+  - 该界面是注入到 Settings / SystemUI 进程的，这些开销都由用户并未主动打开的进程承担。
+- 统一重试退避曲线：新增 `RetryPolicy`，把散落在 `BridgeServiceClient`（服务端与 UI 端两处）、`ManagerProcess`、`SuiApk` 中的硬编码 `Thread.sleep(1000)`、`postDelayed(..., 1000)` 与局部 `retryDelay *= 2` 收敛为一条共享曲线（起始 100ms，倍率 2，单次上限 30s，总超时 10s）。
+  - 这些重试路径只在"服务尚未就绪"时触发，属冷启动偶发事件；原先无论服务状态是否变化都按固定间隔唤醒，且多处各自维护一套曲线容易漂移。
+  - **注意这不是把轮询改成回调**：桥接 Binder 只在崩溃时才断，没有稳定事件源可订阅（原本已用 `linkToDeath` / `DeathRecipient` 驱动重连）。此处统一的是"重试时的等待时长"，并保证总超时后可终止。
+- `AppListBuilder` 的 `GET_PERMISSIONS` 改为按需请求。原先无条件设置，导致 PackageManager 把每个 app 的完整权限列表序列化跨 Binder 传输后被丢弃，每次列表刷新都付一次；现仅在"仅显示 Shizuku 应用"筛选开启时才请求（新增 `AppQueryFlags`）。
+
+### Fixed
+- 修正看门狗单实例锁记录 pid 错误的问题：原先在子 shell 内写 `$$`，展开的是父进程 pid，导致锁文件恒指向已死进程、永远检测不到活的同类守护进程。改为在父 shell 中获取并从 `$!` 取后台进程 pid。
+- `SuiApk` 等待服务端 Binder 的循环原先固定 `sleep(1000)` × 10 次，且超时后仍继续执行并要求 `openApk()` 非空（会抛 NPE）。改为按 `RetryPolicy` 退避并在总超时后明确抛出 `IllegalStateException`。
+- UI 端 `BridgeServiceClient.requestBinderFromBridge()` 原先吞掉 `InterruptedException` 且不恢复中断标志，导致调用方无法感知取消；现在恢复中断状态并返回 null。
+- **修复失效操作被静默抑制的问题**：`SuiService.shouldInvalidateUid()` 用 `System.currentTimeMillis()` 计算 2 秒去抖窗口。墙钟在 NTP 校正或用户改表时会回跳，使 `now - last` 变为负数，被读作"时间还没到"，从而**无限期抑制**该 uid 的包失效操作——app 会带着过期权限继续运行，且没有任何日志。改为 `SystemClock.elapsedRealtime()`（单调），并在时钟异常时"失败开放"（放行而非抑制）。
+- 修复 `lastInvalidationTime` 无界增长：原先只有 `put` 没有 `remove`。改为有界结构（窗口过期清扫 + 4096 条硬上限 + 包移除时主动清理）。
+- `Uninstaller` 的 30 秒等待 deadline 同样改用 `elapsedRealtime()`，避免墙钟前跳导致等待提前结束、快捷方式残留。
+
+### Added
+- 新增 `scripts/test_watchdog.sh`：在构建主机上以假文件系统驱动真实 `service.sh`，覆盖健康态、崩溃恢复、`sui_shell` 误判、cmdline 回退、崩溃退避、锁文件与 POSIX 兼容性，共 16 项断言。
+- 新增 `scripts/baseline.sh`：采样 `sui` / `sui_shell` 的 PSS、CPU jiffies、次缺页、自愿上下文切换与系统进程派生数，输出 CSV 供构建间对比。
+- 新增 `scripts/verify_tests_ran.sh`：读取 JUnit XML 统计实际执行用例数，为零则失败。
+- 新增 `ShellConfigRules` 及 18 项单元测试，将 shell 工作目录名校验与解析抽为 Java 侧单一定义，`SuiConfigManager` 不再自带一份重复实现。
+  - 注：`sui_main.hpp` 中的原生副本无法消除（Java 与 native 之间无共享代码路径），已在两处互留注释指明对应关系，并由 `ShellConfigRulesTest` 固定 Java 侧行为——两者一旦不一致，shell 服务端将无法解析自己的 `sui_uids.txt`，且失败是静默的。
+- 新增 `CacheSizing` 及 12 项单元测试，把图标缓存容量与工作线程数的上限从 `AppIconCache` / `AppLabelCache` 中抽出并加测试固定。
+- 新增 `UiWorkerDispatcher`，作为管理界面唯一的有界后台线程池。
+- 新增 `RetryPolicy` 及 11 项单元测试，统一服务端与 UI 端的重试退避曲线；测试覆盖单调性、上界、退化输入（负数/超时）与常量自洽性。
+- 新增 `AppQueryFlags` 及 9 项单元测试；常量经 `javap` 核对 android-36 `android.jar`，测试锁定精确位模式与两 flag 不重叠。
+- 新增 `DebouncePolicy` 及 12 项单元测试，覆盖窗口边界、时钟回跳的"失败开放"、过期判定与 `shouldRun` 的一致性，以及窗口值未被顺带改掉（钉住 2000ms）。
+
+### Changed
+- CI `unit-tests` 工作流新增"实际执行用例数"校验与看门狗行为测试；`static-guards` 新增测试源文件存在性、看门狗间隔与无上限轮询断言。
+  - **背景**：此前 `unit-tests` 工作流执行 `:module:testDebugUnitTest`，但仓库中不存在任何测试源，该 job 长期"永远绿但从不验证任何东西"。
+
 ## v1.1.4
 
 ### Fixed

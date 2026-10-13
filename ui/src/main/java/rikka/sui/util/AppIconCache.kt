@@ -28,17 +28,13 @@ import android.util.Log
 import android.widget.ImageView
 import androidx.collection.LruCache
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.zhanghai.android.appiconloader.AppIconLoader
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executor
-import java.util.concurrent.Executors
 import kotlin.coroutines.CoroutineContext
 
 object AppIconCache : CoroutineScope {
@@ -51,32 +47,17 @@ object AppIconCache : CoroutineScope {
 
     private val lruCache: LruCache<String, Bitmap>
 
-    private val dispatcher: CoroutineDispatcher
-
     private val appIconLoaders = ConcurrentHashMap<Int, AppIconLoader>()
 
     init {
-        // Initialize app icon lru cache
-        val maxMemory = Runtime.getRuntime().maxMemory() / 1024
-        val availableCacheSize = (maxMemory / 4).toInt()
-        lruCache = AppIconLruCache(availableCacheSize)
-
-        // Initialize load icon scheduler
-        val availableProcessorsCount = try {
-            Runtime.getRuntime().availableProcessors()
-        } catch (ignored: Exception) {
-            1
-        }
-        val threadCount = 1.coerceAtLeast(availableProcessorsCount / 2)
-        val loadIconExecutor: Executor = Executors.newFixedThreadPool(threadCount) { r ->
-            Thread(r).apply {
-                priority = Thread.MIN_PRIORITY
-            }
-        }
-        dispatcher = loadIconExecutor.asCoroutineDispatcher()
+        // Sizing lives in CacheSizing so it can be pinned by a JVM unit test;
+        // see CacheSizingTest for the bounds and the reasoning.
+        //
+        // The previous policy took a quarter of the heap -- 128MB of retained
+        // Bitmaps on a 512MB heap, inside the Settings process, to serve a list
+        // screen that holds at most a few hundred icons.
+        lruCache = AppIconLruCache(CacheSizing.iconCacheSizeKb(Runtime.getRuntime().maxMemory()))
     }
-
-    fun dispatcher(): CoroutineDispatcher = dispatcher
 
     private fun get(packageName: String, userId: Int, size: Int): Bitmap? = lruCache["$packageName:$userId:$size"]
 
@@ -139,7 +120,7 @@ object AppIconCache : CoroutineScope {
 
         return launch {
             val bitmap = try {
-                withContext(dispatcher) {
+                withContext(UiWorkerDispatcher.dispatcher) {
                     loadIconBitmap(context, info, userId, size)
                 }
             } catch (e: CancellationException) {

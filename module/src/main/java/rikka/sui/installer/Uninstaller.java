@@ -47,7 +47,12 @@ public class Uninstaller {
         IShortcutService shortcutService = null;
         IUserManager userManager = null;
 
-        long deadline = System.currentTimeMillis() + 30_000;
+        // elapsedRealtime, not currentTimeMillis: this is a deadline, and a wall
+        // clock that jumps forward would end the wait early and leave the
+        // shortcuts behind. (The 1s cadence below is deliberately not the shared
+        // RetryPolicy curve -- this is a bounded one-shot wait that must not
+        // miss the service appearing right after a long sleep.)
+        long deadline = android.os.SystemClock.elapsedRealtime() + 30_000;
 
         while (true) {
             //noinspection ConstantConditions
@@ -61,7 +66,7 @@ public class Uninstaller {
                 break;
             }
 
-            if (System.currentTimeMillis() >= deadline) {
+            if (android.os.SystemClock.elapsedRealtime() >= deadline) {
                 Log.w(TAG, "timeout waiting shortcut/user service");
                 return;
             }

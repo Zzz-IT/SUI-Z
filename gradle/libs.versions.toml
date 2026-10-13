@@ -26,6 +26,8 @@ material = "1.14.0"
 dynamicanimation = "1.1.0"
 fastscroll = "1.3.0"
 appiconloader = "1.5.0"
+# Only exercised by JVM unit tests; never shipped in the module zip.
+junit = "4.13.2"
 spotless = "8.7.0"
 support-annotations = "28.0.0"
 
@@ -62,6 +64,7 @@ androidx-dynamicanimation = { group = "androidx.dynamicanimation", name = "dynam
 fastscroll = { group = "me.zhanghai.android.fastscroll", name = "library", version.ref = "fastscroll" }
 appiconloader = { group = "me.zhanghai.android.appiconloader", name = "appiconloader", version.ref = "appiconloader" }
 support-annotations = { group = "com.android.support", name = "support-annotations", version.ref = "support-annotations" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

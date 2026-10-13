@@ -31,7 +31,7 @@ ext {
     moduleAuthor = "Zzz"
     moduleDescription = "基于 Sui 重构的 Zygisk 模块，内置 Shizuku API。需 Magisk 24.0+，请勿将 SystemUI 和 Settings 加入 DenyList。"
     moduleVersionMinor = 1
-    moduleVersionPatch = 4
+    moduleVersionPatch = 5
     moduleVersion = "v${api_version_major}.${moduleVersionMinor}.${moduleVersionPatch}"
     moduleVersionCode = gitCommitCount
 

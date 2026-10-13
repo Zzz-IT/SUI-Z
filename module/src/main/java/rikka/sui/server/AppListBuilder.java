@@ -39,6 +39,7 @@ import rikka.hidden.compat.PackageManagerApis;
 import rikka.hidden.compat.UserManagerApis;
 import rikka.parcelablelist.ParcelableListSlice;
 import rikka.sui.model.AppInfo;
+import rikka.sui.util.AppQueryFlags;
 import rikka.sui.util.MapUtil;
 import rikka.sui.util.UserHandleCompat;
 
@@ -114,7 +115,18 @@ public class AppListBuilder {
 
         Map<String, Boolean> existenceCache = new ArrayMap<>();
         List<AppInfo> list = new ArrayList<>();
-        int installedBaseFlags = 0x00002000 /*MATCH_UNINSTALLED_PACKAGES*/ | PackageManager.GET_PERMISSIONS;
+
+        // GET_PERMISSIONS is only requested when the caller will actually read
+        // requestedPermissions (the "only Shizuku apps" filter). Requesting it
+        // unconditionally made PackageManager attach every app's permission list
+        // to every result, only for us to discard it -- paid on each refresh.
+        // See rikka.sui.util.AppQueryFlags.
+        int installedBaseFlags = AppQueryFlags.forAppList(onlyShizuku);
+
+        // Nothing below may read PackageInfo.requestedPermissions unless the
+        // flag was requested, or the field will be null on every package and the
+        // filter would silently match nothing.
+        boolean canReadPermissions = AppQueryFlags.hasGetPermissions(installedBaseFlags);
 
         for (int user : users) {
             List<PackageInfo> packages = PackageManagerApis.getInstalledPackagesNoThrow(installedBaseFlags, user);
@@ -143,18 +155,26 @@ public class AppListBuilder {
                         }
 
                         if (!explicitlyAllowed) {
-                            if (pi.requestedPermissions == null) {
+                            if (!canReadPermissions) {
+                                // Defensive: the flag was not requested, so
+                                // requestedPermissions is null on every package.
+                                // Skipping here would silently empty the list, so
+                                // fail loudly instead of returning nothing.
+                                LOGGER.w(
+                                        "AppListBuilder: onlyShizuku requested but GET_PERMISSIONS is not set; skipping the permission filter");
+                            } else if (pi.requestedPermissions == null) {
                                 continue;
-                            }
-                            boolean requested = false;
-                            for (String p : pi.requestedPermissions) {
-                                if ("moe.shizuku.manager.permission.API_V23".equals(p)) {
-                                    requested = true;
-                                    break;
+                            } else {
+                                boolean requested = false;
+                                for (String p : pi.requestedPermissions) {
+                                    if ("moe.shizuku.manager.permission.API_V23".equals(p)) {
+                                        requested = true;
+                                        break;
+                                    }
                                 }
-                            }
-                            if (!requested) {
-                                continue;
+                                if (!requested) {
+                                    continue;
+                                }
                             }
                         }
                     }

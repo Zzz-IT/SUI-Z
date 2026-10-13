@@ -26,15 +26,11 @@ import android.util.Log
 import android.widget.TextView
 import androidx.collection.LruCache
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.concurrent.Executor
-import java.util.concurrent.Executors
 import kotlin.coroutines.CoroutineContext
 
 object AppLabelCache : CoroutineScope {
@@ -42,19 +38,6 @@ object AppLabelCache : CoroutineScope {
     override val coroutineContext: CoroutineContext get() = Dispatchers.Main
 
     private val lruCache = LruCache<String, CharSequence>(2000)
-
-    private val dispatcher: CoroutineDispatcher
-
-    init {
-        val availableProcessorsCount = try {
-            Runtime.getRuntime().availableProcessors()
-        } catch (ignored: Exception) {
-            1
-        }
-        val threadCount = 1.coerceAtLeast(availableProcessorsCount / 2)
-        val loadLabelExecutor: Executor = Executors.newFixedThreadPool(threadCount)
-        dispatcher = loadLabelExecutor.asCoroutineDispatcher()
-    }
 
     private fun get(packageName: String): CharSequence? = lruCache[packageName]
 
@@ -90,7 +73,7 @@ object AppLabelCache : CoroutineScope {
 
         return launch {
             val label = try {
-                withContext(dispatcher) {
+                withContext(UiWorkerDispatcher.dispatcher) {
                     val pm = context.packageManager
                     val loaded = loadLabel(pm, info)
                     put(packageName, loaded)

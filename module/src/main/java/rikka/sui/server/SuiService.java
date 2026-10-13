@@ -64,6 +64,7 @@ import rikka.sui.model.AppInfo;
 import rikka.sui.server.bridge.BridgeServiceClient;
 import rikka.sui.util.AppLaunchUtils;
 import rikka.sui.util.BridgeConstants;
+import rikka.sui.util.DebouncePolicy;
 import rikka.sui.util.Logger;
 import rikka.sui.util.OsUtils;
 import rikka.sui.util.SettingsPackages;
@@ -88,19 +89,57 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
             });
     private final java.util.concurrent.atomic.AtomicLong uidSyncVersion =
             new java.util.concurrent.atomic.AtomicLong();
-    private final java.util.concurrent.ConcurrentHashMap<Integer, Long> lastInvalidationTime =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    // Bounded debounce state for package invalidation. See DebouncePolicy:
+    // timestamps must come from a monotonic clock (elapsedRealtime), entries
+    // older than the window are swept, and the map has a hard ceiling so it
+    // cannot grow without limit the way the previous one did.
+    private final java.util.LinkedHashMap<Integer, Long> lastInvalidationTime =
+            new java.util.LinkedHashMap<>();
+    private final Object lastInvalidationLock = new Object();
 
     private boolean shouldInvalidateUid(int uid) {
-        long now = System.currentTimeMillis();
+        // elapsedRealtime, not currentTimeMillis: the wall clock can jump
+        // backwards, which used to suppress invalidations indefinitely.
+        long now = android.os.SystemClock.elapsedRealtime();
 
-        synchronized (lastInvalidationTime) {
+        synchronized (lastInvalidationLock) {
             Long last = lastInvalidationTime.get(uid);
-            if (last == null || now - last >= 2000) {
-                lastInvalidationTime.put(uid, now);
-                return true;
+            if (!DebouncePolicy.shouldRun(now, last)) {
+                return false;
             }
-            return false;
+
+            if (DebouncePolicy.shouldSweep(lastInvalidationTime.size())) {
+                sweepExpired(now);
+            }
+            // Hard backstop: never grow without bound even if the sweep misses.
+            while (lastInvalidationTime.size() >= DebouncePolicy.MAX_TRACKED_KEYS) {
+                java.util.Iterator<Integer> it = lastInvalidationTime.keySet().iterator();
+                if (!it.hasNext()) {
+                    break;
+                }
+                it.next();
+                it.remove();
+            }
+
+            lastInvalidationTime.put(uid, now);
+            return true;
+        }
+    }
+
+    private void sweepExpired(long now) {
+        java.util.Iterator<java.util.Map.Entry<Integer, Long>> it =
+                lastInvalidationTime.entrySet().iterator();
+        while (it.hasNext()) {
+            java.util.Map.Entry<Integer, Long> entry = it.next();
+            if (DebouncePolicy.isExpired(now, entry.getValue())) {
+                it.remove();
+            }
+        }
+    }
+
+    private void forgetInvalidationTime(int uid) {
+        synchronized (lastInvalidationLock) {
+            lastInvalidationTime.remove(uid);
         }
     }
 
@@ -915,6 +954,9 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
             LOGGER.i("uid %d is removed", uid);
             configManager.remove(uid);
             removePendingPermissionConfirmationsForUid(uid);
+            // The uid is gone; its debounce entry can never be read again, so
+            // drop it here rather than waiting for a sweep.
+            forgetInvalidationTime(uid);
             if (!shellMode) {
                 flushShellRoutingState();
             }

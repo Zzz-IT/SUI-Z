@@ -22,13 +22,33 @@ if [ "$API_LEVEL" -lt 26 ]; then
     chmod 644 "$SUI_DIR/sui.apk"
 
     if [ "$API_LEVEL" -le 23 ]; then
+        # On API 23 and below, ART regenerates files under oat/ with a restrictive
+        # mode, and the injected dex cannot be loaded until they are readable.
+        #
+        # The original code polled this at 10 Hz forever. That is 864,000
+        # `chmod -R` traversals per day, on every device running this module,
+        # long after oat/ has settled.
+        #
+        # Now: fix it once, then re-apply on a 2s cadence for a bounded boot
+        # window and exit. Worst case is 300 traversals instead of unbounded.
         (
-            while true; do
+            OAT_POLL_INTERVAL=2
+            OAT_POLL_MAX=300
+            oat_polls=0
+
+            if [ -d "$SUI_DIR/oat" ]; then
+                chmod -R a+rX "$SUI_DIR/oat" 2>/dev/null
+            fi
+
+            while [ "$oat_polls" -lt "$OAT_POLL_MAX" ]; do
+                sleep "$OAT_POLL_INTERVAL"
                 if [ -d "$SUI_DIR/oat" ]; then
                     chmod -R a+rX "$SUI_DIR/oat" 2>/dev/null
                 fi
-                sleep 0.1
+                oat_polls=$((oat_polls + 1))
             done
+
+            log -p i -t "Sui" "oat permission watchdog finished after ${oat_polls} polls"
         ) &
     fi
 

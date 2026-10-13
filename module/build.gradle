@@ -88,6 +88,48 @@ dependencies {
 
     implementation libs.hidden.compat
     compileOnly libs.hidden.stub
+
+    testImplementation libs.junit
+}
+
+// The CI unit-tests job runs `:module:testDebugUnitTest`. For a long time there
+// were no test sources at all, so that job passed without checking anything.
+// Guard against that silent-green failure mode: assert, before the tests run,
+// that test sources exist.
+//
+// The companion check -- that tests actually EXECUTED -- lives in
+// scripts/verify_tests_ran.sh. Gradle reports "no tests found for given
+// includes" as SUCCESS, and expressing that check in the build script would
+// need Gradle's JUnit XML API; as a standalone script it is also testable
+// without a Gradle distribution.
+tasks.register("verifyUnitTestSources") {
+    group = "verification"
+    description = "Fails if unit tests are configured but no test sources exist."
+    doLast {
+        def dirs = ["src/test/java", "src/test/kotlin"].collect { file(it) }
+        def found = dirs.findAll { it.exists() }
+        def sources = fileTree(found.isEmpty() ? file("src/test/java") : found.first()) {
+            include "**/*.java"
+            include "**/*.kt"
+        }
+        if (sources.isEmpty) {
+            throw new GradleException(
+                    "No unit test sources found under ${dirs*.name}. " +
+                    ":module:testDebugUnitTest would pass while verifying nothing. " +
+                    "Add tests, or remove the test task from CI explicitly.")
+        }
+        logger.lifecycle("verifyUnitTestSources: ${sources.files.size()} test source file(s)")
+    }
+}
+
+// withType rather than named, so this covers every variant's test task without
+// depending on when AGP creates them.
+tasks.withType(Test).configureEach {
+    dependsOn("verifyUnitTestSources")
+    testLogging {
+        events "failed", "skipped"
+        showStandardStreams = false
+    }
 }
 
 def outDir = file("$rootDir/out")

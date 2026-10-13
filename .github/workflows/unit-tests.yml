@@ -55,3 +55,22 @@ jobs:
 
       - name: Run Android unit tests
         run: ./gradlew :ui:testDebugUnitTest :module:testDebugUnitTest --stacktrace
+
+      # Gradle exits 0 on "No tests found for given includes". Without this
+      # step the job stayed green for a long time while both test tasks had no
+      # test sources at all. scripts/verify_tests_ran.sh reads the JUnit XML
+      # and fails when zero tests actually executed.
+      - name: Verify unit tests actually ran
+        run: |
+          set -euo pipefail
+          bash scripts/verify_tests_ran.sh module testDebugUnitTest
+          bash scripts/verify_tests_ran.sh ui testDebugUnitTest
+
+      # Watchdog behaviour is pure shell logic that only shows up on a device,
+      # so it is exercised here against a fake filesystem instead. Runs under
+      # bash; scripts/test_watchdog.sh itself asserts that service.sh stays
+      # POSIX-clean for /system/bin/sh.
+      - name: Watchdog behavioural tests
+        run: |
+          set -euo pipefail
+          bash scripts/test_watchdog.sh

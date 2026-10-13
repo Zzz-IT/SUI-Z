@@ -44,6 +44,7 @@ import rikka.sui.resource.SuiApk;
 import rikka.sui.server.ServerConstants;
 import rikka.sui.shortcut.SuiShortcut;
 import rikka.sui.util.BridgeServiceClient;
+import rikka.sui.util.RetryPolicy;
 import rikka.sui.util.SettingsPackages;
 
 public class ManagerProcess {
@@ -144,8 +145,11 @@ public class ManagerProcess {
     private static void sendToService() {
         IShizukuService service = BridgeServiceClient.getService();
         if (service == null) {
-            LOGGER.w("service is null, wait 1s");
-            WorkerHandler.get().postDelayed(ManagerProcess::sendToService, 1000);
+            // The service is not up yet. Back off rather than busy-retry; the
+            // linkToDeath handler below is what drives reconnection once we are
+            // attached, so a slow retry here is harmless.
+            LOGGER.w("service is null, backing off");
+            WorkerHandler.get().postDelayed(ManagerProcess::sendToService, RetryPolicy.delayForAttempt(0));
             return;
         }
 
@@ -159,13 +163,18 @@ public class ManagerProcess {
                     .linkToDeath(
                             () -> {
                                 LOGGER.w("Sui daemon died, schedule reconnection...");
-                                WorkerHandler.get().postDelayed(ManagerProcess::sendToService, 1000);
+                                // Reconnect after a short delay; the DeathRecipient
+                                // gives us the trigger, so no polling is needed.
+                                WorkerHandler.get()
+                                        .postDelayed(
+                                                ManagerProcess::sendToService,
+                                                RetryPolicy.delayForAttempt(0));
                             },
                             0);
             LOGGER.i("attachApplication and linkToDeath successfully");
         } catch (RemoteException e) {
             LOGGER.w(e, "attachApplication or linkToDeath failed");
-            WorkerHandler.get().postDelayed(ManagerProcess::sendToService, 1000);
+            WorkerHandler.get().postDelayed(ManagerProcess::sendToService, RetryPolicy.delayForAttempt(0));
             return;
         }
 
@@ -185,8 +194,10 @@ public class ManagerProcess {
         }
 
         if (context == null) {
-            LOGGER.w("application is null, wait 1s");
-            WorkerHandler.get().postDelayed(ManagerProcess::registerListener, 1000);
+            // Application is not ready yet. Back off rather than poll; once the
+            // application object exists this path is never taken again.
+            LOGGER.w("application is null, backing off");
+            WorkerHandler.get().postDelayed(ManagerProcess::registerListener, RetryPolicy.delayForAttempt(0));
             return;
         }
 

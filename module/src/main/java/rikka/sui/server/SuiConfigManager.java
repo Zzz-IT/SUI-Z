@@ -32,19 +32,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import rikka.shizuku.server.ConfigManager;
+import rikka.sui.util.ShellConfigRules;
 
 public class SuiConfigManager extends ConfigManager {
 
     public static final int DEFAULT_UID = -1;
     private static final int FLAG_GLOBAL_SETTINGS_INITIALIZED = 1 << 30;
     private static final int FLAG_MONET_DISABLED = 1 << 1;
-    private static final String LEGACY_SHELL_DIR = "/data/local/tmp/sui_shell";
-    private static final String SHELL_BASE_DIR = "/data/local/tmp";
-    private static final String SHELL_DIR_MARKER = "/data/adb/sui/shell_dir_name";
+    // Path constants live in ShellConfigRules so the native implementation in
+    // sui_main.hpp can be checked against a single definition.
+    private static final String SHELL_DIR_MARKER = ShellConfigRules.SHELL_DIR_MARKER;
+    private static final String LEGACY_SHELL_DIR =
+            ShellConfigRules.SHELL_BASE_DIR + "/" + ShellConfigRules.LEGACY_SHELL_DIR_NAME;
+
     private static final String SHELL_CONFIG_FILENAME = "sui_uids.txt";
     private static final String BRIDGE_TOKEN_FILENAME = "bridge_token";
     private static final String BRIDGE_TOKEN_TMP_FILENAME = "bridge_token.tmp";
-    private static final String SHELL_DIR_PREFIX = "sui_shell_";
     private static final long SHELL_SYNC_DEBOUNCE_MS = 200;
     private static final HandlerThread SHELL_SYNC_THREAD = new HandlerThread("sui-shell-sync");
     private static final Handler SHELL_SYNC_HANDLER;
@@ -56,35 +59,11 @@ public class SuiConfigManager extends ConfigManager {
         SHELL_SYNC_HANDLER = new Handler(SHELL_SYNC_THREAD.getLooper());
     }
 
-    private static boolean isValidShellDirName(String name) {
-        if ("sui_shell".equals(name)) {
-            return true;
-        }
-        if (!name.startsWith(SHELL_DIR_PREFIX)) {
-            return false;
-        }
-        for (int i = 0; i < name.length(); i++) {
-            char c = name.charAt(i);
-            boolean ok = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || c == '_' || c == '-';
-            if (!ok) {
-                return false;
-            }
-        }
-        return true;
-    }
-
     private static File resolveShellDirFromMarkerValue(String value) {
-        if (value.startsWith(SHELL_BASE_DIR + "/")) {
-            String name = value.substring(SHELL_BASE_DIR.length() + 1);
-            if (isValidShellDirName(name)) {
-                return new File(value);
-            }
-            return null;
-        }
-        if (isValidShellDirName(value)) {
-            return new File(SHELL_BASE_DIR, value);
-        }
-        return null;
+        // Shared with the native implementation in sui_main.hpp; see
+        // rikka.sui.util.ShellConfigRules for why this must stay in sync.
+        String resolved = ShellConfigRules.resolveShellDir(value);
+        return resolved != null ? new File(resolved) : null;
     }
 
     private static SuiConfigManager instance;

@@ -37,6 +37,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Objects;
 import rikka.sui.util.BridgeServiceClient;
+import rikka.sui.util.RetryPolicy;
 
 @SuppressLint({"DiscouragedPrivateApi", "BlockedPrivateApi"})
 @SuppressWarnings("JavaReflectionMemberAccess")
@@ -88,13 +89,22 @@ public class SuiApk {
     private SuiApk()
             throws IllegalAccessException, InstantiationException, NoSuchMethodException, InvocationTargetException,
                     NoSuchFieldException, InterruptedException, Exception {
-        int retries = 10;
-        do {
-            if (BridgeServiceClient.getService() != null) break;
-            Log.w("SuiApk", "Cannot acquire server binder, wait 1s");
-            Thread.sleep(1000);
-            retries--;
-        } while (retries > 0);
+        // The service must be up before we can ask it to open the apk for us.
+        // Retry with the shared backoff curve rather than a fixed 1s poll, and
+        // respect the total timeout so we do not block the caller indefinitely.
+        long startUptime = android.os.SystemClock.uptimeMillis();
+        int attempt = 0;
+        while (BridgeServiceClient.getService() == null) {
+            long elapsed = android.os.SystemClock.uptimeMillis() - startUptime;
+            long delay = RetryPolicy.delayForAttempt(elapsed, attempt);
+            if (delay <= 0) {
+                LOGGER.e("SuiApk: service not available after %d ms, giving up", elapsed);
+                throw new IllegalStateException("Sui service is not available");
+            }
+            LOGGER.w("SuiApk: cannot acquire server binder, retry in %d ms", delay);
+            Thread.sleep(delay);
+            attempt++;
+        }
 
         String apkPath;
         if (Build.VERSION.SDK_INT < 28) {

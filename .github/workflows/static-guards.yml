@@ -124,6 +124,79 @@ jobs:
             exit 1
           fi
 
+          if [ ! -f scripts/verify_tests_ran.sh ]; then
+            echo "Error: scripts/verify_tests_ran.sh is missing"
+            echo "  Without it, :module:testDebugUnitTest can pass with zero tests."
+            exit 1
+          fi
+
+          if [ ! -f scripts/test_watchdog.sh ]; then
+            echo "Error: scripts/test_watchdog.sh is missing"
+            exit 1
+          fi
+
+          if ! grep -q 'scripts/verify_tests_ran.sh' .github/workflows/unit-tests.yml; then
+            echo "Error: unit-tests workflow must assert that tests really ran"
+            exit 1
+          fi
+
+          if ! grep -q 'scripts/test_watchdog.sh' .github/workflows/unit-tests.yml; then
+            echo "Error: unit-tests workflow must run the watchdog behavioural tests"
+            exit 1
+          fi
+
+          # module/src/test must never be empty again: that is what made
+          # :module:testDebugUnitTest silently green for a long stretch of history.
+          if ! find module/src/test -name '*.java' -o -name '*.kt' 2>/dev/null | grep -q .; then
+            echo "Error: no unit test sources under module/src/test"
+            exit 1
+          fi
+
+          # Same for :ui.
+          if ! find ui/src/test -name '*.java' -o -name '*.kt' 2>/dev/null | grep -q .; then
+            echo "Error: no unit test sources under ui/src/test"
+            exit 1
+          fi
+
+          # The UI is injected into the Settings and SystemUI processes, so an
+          # unbounded cache there is charged to a process the user did not open.
+          # CacheSizing owns the bounds; nothing else should compute heap
+          # fractions inline.
+          # -R, not a bare path: grep on a directory errors out ("Is a
+          # directory") and, with `set -e` absent, that error is easy to miss.
+          if grep -R --include='*.kt' --include='*.java' -qE 'maxMemory\(\)[[:space:]]*/[[:space:]]*1024' ui/src; then
+            echo "Error: icon cache sizing must come from CacheSizing, not an inline heap fraction"
+            exit 1
+          fi
+
+          # The icon and label caches must share one bounded pool rather than
+          # each building Executors.newFixedThreadPool of its own.
+          if grep -q 'newFixedThreadPool' ui/src/main/java/rikka/sui/util/AppIconCache.kt \
+             ui/src/main/java/rikka/sui/util/AppLabelCache.kt; then
+            echo "Error: caches must not create their own thread pools; use UiWorkerDispatcher"
+            exit 1
+          fi
+
+          # The watchdog is the module's biggest idle-power cost. A 5s poll here
+          # costs roughly 17,000 process spawns per day, so assert the steady
+          # state stays lazy.
+          if ! grep -q 'CHECK_INTERVAL=120' template/magisk_module/service.sh; then
+            echo "Error: watchdog steady-state interval must stay >= 120s"
+            exit 1
+          fi
+
+          if grep -qE '^\s*interval=5\s*$' template/magisk_module/service.sh; then
+            echo "Error: watchdog fell back to the 5s poll interval"
+            exit 1
+          fi
+
+          # post-fs-data.sh runs a bounded oat-permission loop on API <= 23. It
+          # used to be an unbounded 10 Hz `chmod -R`.
+          if grep -qE 'while true' template/magisk_module/post-fs-data.sh; then
+            echo "Error: post-fs-data.sh must not contain an unbounded polling loop"
+            exit 1
+          fi
+
           if ! grep -q 'scripts/extract_changelog.sh' .github/workflows/release.yml; then
             echo "Error: release workflow must read notes from CHANGELOG.md"
             exit 1

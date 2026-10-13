@@ -30,6 +30,15 @@
 #include <string>
 #include <dirent.h>
 
+// These four constants, and the rules in is_valid_shell_dir_name() /
+// resolve_shell_dir_path() below, are duplicated from
+// module/src/main/java/rikka/sui/util/ShellConfigRules.java.
+//
+// The duplication is unavoidable -- this is native code and that is the ART-side
+// definition -- but it is also dangerous: if the two ever disagree, the root
+// server publishes a directory name the shell server refuses to resolve, and
+// every app silently loses its shell permission. ShellConfigRulesTest pins the
+// Java behaviour; change that class's tests and change these rules together.
 static constexpr const char* SUI_DATA_DIR = "/data/adb/sui";
 static constexpr const char* LEGACY_SHELL_DIR = "/data/local/tmp/sui_shell";
 static constexpr const char* SHELL_BASE_DIR = "/data/local/tmp";

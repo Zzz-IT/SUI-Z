@@ -31,6 +31,7 @@ import java.lang.reflect.Field;
 import java.util.Map;
 import rikka.sui.server.SuiService;
 import rikka.sui.util.BridgeConstants;
+import rikka.sui.util.RetryPolicy;
 
 public class BridgeServiceClient {
 
@@ -125,7 +126,9 @@ public class BridgeServiceClient {
         IBinder bridgeService = ServiceManager.getService(BridgeConstants.SERVICE_NAME);
 
         if (bridgeService == null || !bridgeService.pingBinder()) {
-            long delay = Math.min(30_000L, 1000L * (1L << Math.min(attempt, 5)));
+            // Use the shared RetryPolicy curve so the backoff here cannot
+            // silently diverge from the rest of the module.
+            long delay = RetryPolicy.delayForAttempt(attempt);
             LOGGER.i("service %s is not started, retry in %d ms", BridgeConstants.SERVICE_NAME, delay);
             BRIDGE_HANDLER.postDelayed(() -> sendToBridgeOnce(isRestart, attempt + 1), delay);
             return;
@@ -139,13 +142,17 @@ public class BridgeServiceClient {
             linkBridgeServiceDeathRecipient(bridgeService);
         } catch (Throwable e) {
             LOGGER.w(e, "linkToDeath");
-            BRIDGE_HANDLER.postDelayed(() -> sendToBridgeOnce(false, attempt + 1), 1000);
+            BRIDGE_HANDLER.postDelayed(
+                    () -> sendToBridgeOnce(false, attempt + 1),
+                    RetryPolicy.delayForAttempt(attempt));
             return;
         }
 
         if (!SuiService.isShellMode()) {
             if (!registerBridgeTokens(bridgeService)) {
-                BRIDGE_HANDLER.postDelayed(() -> sendToBridgeOnce(false, attempt + 1), 1000);
+                BRIDGE_HANDLER.postDelayed(
+                        () -> sendToBridgeOnce(false, attempt + 1),
+                        RetryPolicy.delayForAttempt(attempt));
                 return;
             }
         }
@@ -200,13 +207,17 @@ public class BridgeServiceClient {
                 listener.onResponseFromBridgeService(false);
             }
             maybeRestartZygote();
-            BRIDGE_HANDLER.postDelayed(() -> sendToBridgeOnce(false, 0), 1000);
+            // A full re-registration follows the same backoff curve as the
+            // initial connect; a hardcoded 1s here would outpace it.
+            BRIDGE_HANDLER.postDelayed(
+                    () -> sendToBridgeOnce(false, 0),
+                    RetryPolicy.delayForAttempt(0));
             return;
         }
 
         BRIDGE_HANDLER.postDelayed(
                 () -> sendBinderToBridgeAsync(bridgeService, attempt + 1, isRestart),
-                1000);
+                RetryPolicy.delayForAttempt(attempt));
     }
 
     private static void maybeRestartZygote() {

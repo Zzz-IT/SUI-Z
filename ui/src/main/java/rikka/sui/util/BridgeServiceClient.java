@@ -31,6 +31,7 @@ import rikka.parcelablelist.ParcelableListSlice;
 import rikka.shizuku.ShizukuApiConstants;
 import rikka.sui.BuildConfig;
 import rikka.sui.model.AppInfo;
+import rikka.sui.util.RetryPolicy;
 
 public class BridgeServiceClient {
 
@@ -42,8 +43,10 @@ public class BridgeServiceClient {
     private static final int BINDER_TRANSACTION_BATCH_UPDATE_UNCONFIGURED = 10006;
     private static final int BINDER_TRANSACTION_setGlobalSettings = 10007;
     private static final int BINDER_TRANSACTION_getGlobalSettings = 10008;
-    private static final int RETRY_MAX = 5;
-    private static final long RETRY_DELAY_MS = 1000;
+
+    // Retry timing is shared with the module's server-side client; see
+    // rikka.sui.util.RetryPolicy and RetryPolicyTest for the curve and bounds.
+    // Hardcoded intervals were removed here so the two sides cannot drift.
     private static IBinder binder;
     private static IShizukuService service;
 
@@ -129,14 +132,15 @@ public class BridgeServiceClient {
 
         if (BuildConfig.DEBUG) android.util.Log.d(TAG, "Attempting to request binder from bridge...");
 
-        for (int i = 0; i < RETRY_MAX; i++) {
+        long startUptime = android.os.SystemClock.uptimeMillis();
+        for (int attempt = 0; ; attempt++) {
             IBinder activityBinder = ServiceManager.getService(BridgeConstants.SERVICE_NAME);
 
             if (activityBinder == null) {
                 android.util.Log.e(
                         TAG,
-                        "CRITICAL FAILURE: ServiceManager.getService(\"activity\") returned null! Retry count: "
-                                + (i + 1));
+                        "CRITICAL FAILURE: ServiceManager.getService(\"activity\") returned null! Attempt: "
+                                + (attempt + 1));
             } else {
                 if (BuildConfig.DEBUG) android.util.Log.d(TAG, "'activity' service binder obtained. Preparing custom transact...");
 
@@ -160,8 +164,8 @@ public class BridgeServiceClient {
                     } else {
                         android.util.Log.w(
                                 TAG,
-                                "FAILURE: Transact was successful, but the returned binder is NULL. The bridge likely rejected the request (or not ready). Retry count: "
-                                        + (i + 1));
+                                "FAILURE: Transact was successful, but the returned binder is NULL. The bridge likely rejected the request (or not ready). Attempt: "
+                                        + (attempt + 1));
                     }
                 } catch (Throwable e) {
                     android.util.Log.e(
@@ -172,16 +176,20 @@ public class BridgeServiceClient {
                 }
             }
 
-            if (i < RETRY_MAX - 1) {
-                try {
-                    Thread.sleep(RETRY_DELAY_MS);
-                } catch (InterruptedException ignored) {
-                }
+            long elapsed = android.os.SystemClock.uptimeMillis() - startUptime;
+            long delay = RetryPolicy.delayForAttempt(elapsed, attempt);
+            if (delay <= 0) {
+                android.util.Log.e(TAG, "requestBinderFromBridge is giving up after " + elapsed + " ms.");
+                return null;
+            }
+
+            try {
+                Thread.sleep(delay);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
             }
         }
-
-        android.util.Log.e(TAG, "requestBinderFromBridge is returning NULL after all retries.");
-        return null;
     }
 
     protected static synchronized void setBinder(@Nullable IBinder newBinder) {
@@ -227,21 +235,24 @@ public class BridgeServiceClient {
             android.util.Log.w("SuiBridgeDebug", "getApplications called on main thread");
             return Collections.emptyList();
         }
-        int retryCount = 0;
-        long retryDelay = 500;
-        while (retryCount < 3) {
+        long startUptime = android.os.SystemClock.uptimeMillis();
+        for (int attempt = 0; ; attempt++) {
             IShizukuService s = getService();
             if (s == null) {
-                android.util.Log.e("SuiBridgeDebug", "getApplications: Service is null! (Retry " + retryCount + ")");
+                long elapsed = android.os.SystemClock.uptimeMillis() - startUptime;
+                long delay = RetryPolicy.delayForAttempt(elapsed, attempt);
+                if (delay <= 0) {
+                    android.util.Log.e("SuiBridgeDebug", "getApplications: service never came up, giving up");
+                    return Collections.emptyList();
+                }
+                android.util.Log.e("SuiBridgeDebug", "getApplications: Service is null! (Attempt " + attempt + ")");
                 try {
-                    Thread.sleep(retryDelay);
-                    retryDelay *= 2;
+                    Thread.sleep(delay);
                 } catch (InterruptedException ie) {
                     android.util.Log.w("SuiBridgeDebug", "Retry sleep interrupted");
                     Thread.currentThread().interrupt();
                     return Collections.emptyList();
                 }
-                retryCount++;
                 continue;
             }
 
@@ -260,15 +271,19 @@ public class BridgeServiceClient {
                             "DeadObjectException explicitly caught in getApplications. Invalidating binder and retrying...",
                             e);
                     setBinder(null);
+                    long elapsed = android.os.SystemClock.uptimeMillis() - startUptime;
+                    long delay = RetryPolicy.delayForAttempt(elapsed, attempt);
+                    if (delay <= 0) {
+                        android.util.Log.e("SuiBridgeDebug", "getApplications: binder died repeatedly, giving up");
+                        return Collections.emptyList();
+                    }
                     try {
-                        Thread.sleep(retryDelay);
-                        retryDelay *= 2;
+                        Thread.sleep(delay);
                     } catch (InterruptedException ie) {
                         android.util.Log.w("SuiBridgeDebug", "Retry sleep interrupted");
                         Thread.currentThread().interrupt();
                         return Collections.emptyList();
                     }
-                    retryCount++;
                     continue;
                 } catch (android.os.TransactionTooLargeException e) {
                     android.util.Log.e(
@@ -291,8 +306,6 @@ public class BridgeServiceClient {
                 data.recycle();
             }
         }
-        android.util.Log.e("SuiBridgeDebug", "getApplications failed after max retries.");
-        return Collections.emptyList();
     }
 
     public static void requestPinnedShortcut() throws RemoteException {

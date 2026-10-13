@@ -105,4 +105,38 @@ dependencies {
     implementation libs.androidx.dynamicanimation
     implementation libs.fastscroll
     implementation libs.appiconloader
+
+    testImplementation libs.junit
+}
+
+// :ui:testDebugUnitTest has historically had no test sources at all, so it
+// passed while verifying nothing. Assert before the tests run that sources
+// exist; scripts/verify_tests_ran.sh covers the "they ran" half in CI.
+tasks.register("verifyUnitTestSources") {
+    group = "verification"
+    description = "Fails if unit tests are configured but no test sources exist."
+    doLast {
+        def dirs = ["src/test/java", "src/test/kotlin"].collect { file(it) }
+        def found = dirs.findAll { it.exists() }
+        def sources = fileTree(found.isEmpty() ? file("src/test/java") : found.first()) {
+            include "**/*.java"
+            include "**/*.kt"
+        }
+        if (sources.isEmpty) {
+            throw new GradleException(
+                    "No unit test sources found under ${dirs*.name}. " +
+                    ":ui:testDebugUnitTest would pass while verifying nothing.")
+        }
+        logger.lifecycle("verifyUnitTestSources: ${sources.files.size()} test source file(s)")
+    }
+}
+
+// withType rather than named, so every variant's test task is covered without
+// depending on when AGP creates them.
+tasks.withType(Test).configureEach {
+    dependsOn("verifyUnitTestSources")
+    testLogging {
+        events "failed", "skipped"
+        showStandardStreams = false
+    }
 }
