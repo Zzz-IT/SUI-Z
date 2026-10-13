@@ -36,6 +36,20 @@ jobs:
             exit 1
           fi
 
+          # The release notes step below fails with exit 2 when CHANGELOG.md
+          # has no `## <tag>` heading. That check runs after Gradle setup, and
+          # its failure mode ("0s / exit code 2") carries no hint about which
+          # of the two names drifted. Validate the heading here instead, right
+          # after the tag format, so the mismatch is named in the first step.
+          if ! grep -qE "^##[[:space:]]+${TAG}([[:space:]]|$)" CHANGELOG.md; then
+            echo "Error: CHANGELOG.md has no section heading for tag ${TAG}"
+            echo "  Expected a line: ## ${TAG}"
+            echo "  Top-most section heading:"
+            grep -m1 -E '^##[[:space:]]+' CHANGELOG.md | sed 's/^/    /' || true
+            echo "  Fix the CHANGELOG.md heading, then move the tag to the new commit."
+            exit 1
+          fi
+
           echo "TAG=$TAG" >> "$GITHUB_ENV"
 
       - name: Setup Java
