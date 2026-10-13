@@ -112,13 +112,16 @@ tasks.register("verifyUnitTestSources") {
             include "**/*.java"
             include "**/*.kt"
         }
-        if (sources.isEmpty) {
+        // FileTree exposes no 'isEmpty' property; go through its FileCollection
+        // view instead, where the Set semantics are unambiguous.
+        def files = sources.files
+        if (files.isEmpty()) {
             throw new GradleException(
                     "No unit test sources found under ${dirs*.name}. " +
                     ":module:testDebugUnitTest would pass while verifying nothing. " +
                     "Add tests, or remove the test task from CI explicitly.")
         }
-        logger.lifecycle("verifyUnitTestSources: ${sources.files.size()} test source file(s)")
+        logger.lifecycle("verifyUnitTestSources: ${files.size()} test source file(s)")
     }
 }
 
