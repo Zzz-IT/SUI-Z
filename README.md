@@ -1,5 +1,7 @@
 # SUI Z
 
+当前版本：**v1.1.5**。详细变更请见 [CHANGELOG.md](CHANGELOG.md#v115)。
+
 基于 Sui 现代化重构的 Zygisk 模块。提供以 Root/Shell 身份调用 Android Framework API 和运行独立 Java 服务的 Shizuku API。
 
 SUI Z 不向 PATH 中添加二进制文件，也不会在桌面暴露常规启动图标；管理界面以内置 sui.apk 形式随模块提供。只需安装模块并重启，即可在隐蔽的状态下为支持 Shizuku API 的应用提供特权服务。
@@ -15,14 +17,20 @@ SUI Z 主要提供两项能力：
 ## 安装指南
 
 **要求：**
+- Android 6.0+（API 23+）。
 - Magisk 24.0+，且开启了 Zygisk。
 - 或 KernelSU / APatch 环境下搭配 Zygisk Next、ReZygisk 等 Zygisk 实现。
 - **注意：请勿将 SystemUI（系统界面）和 Settings（设置）加入到 Zygisk 的 DenyList（排除列表）中，否则管理界面将无法正常工作。**
 
 **安装步骤：**
 1. 在 [Releases](https://github.com/Zzz-IT/SUI-Z/releases) 页面下载最新版本的 ZIP 压缩包。
-2. 打开您的 Root 管理器（Magisk / KernelSU / APatch），选择“从本地安装”并刷入下载的 ZIP。
+2. 打开您的 Root 管理器（Magisk / KernelSU / APatch），选择"从本地安装"并刷入下载的 ZIP。
 3. 重启设备。
+
+**升级到 v1.1.5 及以上：**
+- 空闲耗电显著降低：模块看门狗的 `pidof` 轮询由每 5 秒改为稳态 120 秒，日均进程派生数从约 17,000 降至约 720。
+- 失效抑制已修复：包权限变更在墙钟回跳时不再被静默吞掉。
+- 桌面快捷方式清理：模块卸载时会一并清除 SUI Z 创建的桌面快捷方式（修复了旧版本偶发残留的问题）。
 
 ## 唤出管理界面
 
@@ -44,6 +52,8 @@ SUI Z 默认不会在桌面上创建图标。可以通过以下几种方式唤�
 
 # SUI Z (English)
 
+Current version: **v1.1.5**. See [CHANGELOG.md](CHANGELOG.md#v115) for the full change log.
+
 Modern superuser interface implementation for Android. Forked and refactored from Sui.
 
 ## Introduction
@@ -57,6 +67,7 @@ SUI Z does not add binaries to PATH and does not expose a regular launcher icon;
 ## Installation
 
 **Requirements:**
+- Android 6.0+ (API 23+).
 - Magisk 24.0+ with Zygisk enabled.
 - Or KernelSU / APatch with a Zygisk implementation (e.g., Zygisk Next, ReZygisk).
 - **DO NOT add SystemUI and Settings to the Zygisk DenyList, otherwise the management UI will not work.**
@@ -65,6 +76,11 @@ SUI Z does not add binaries to PATH and does not expose a regular launcher icon;
 1. Download the latest ZIP from [Releases](https://github.com/Zzz-IT/SUI-Z/releases).
 2. Install the ZIP from your Root Manager (Magisk / KernelSU / APatch).
 3. Reboot.
+
+**Upgrading to v1.1.5 or above:**
+- Idle power use is now significantly lower: the watchdog `pidof` polling interval went from 5 s to 120 s in steady state, reducing daily process forks from ~17,000 to ~720.
+- A bug that silently dropped package invalidations when the wall clock jumped backward has been fixed.
+- Uninstalling the module now also removes any home-screen shortcut the module created (previously a few shortcuts could leak past uninstall in rare cases).
 
 ## Management UI
 
