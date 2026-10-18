@@ -1,6 +1,6 @@
 {
-  "version": "v1.1.5",
-  "versionCode": 61,
-  "zipUrl": "https://github.com/Zzz-IT/SUI-Z/releases/download/v1.1.5/SUI-Z-v1.1.5_61-0cf0ce0-release.zip",
-  "changelog": "https://github.com/Zzz-IT/SUI-Z/releases/tag/v1.1.5"
+  "version": "v1.1.6",
+  "versionCode": 10106,
+  "zipUrl": "https://github.com/Zzz-IT/SUI-Z/releases/download/v1.1.6/SUI-Z-v1.1.6_10106-84d71da-release.zip",
+  "changelog": "相比 v1.1.5：修掉十余处会让权限卡死、设置闪退或进程被误杀的隐患；日志不再刷屏，配置不再重复写盘。"
 }
