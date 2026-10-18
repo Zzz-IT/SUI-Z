@@ -69,6 +69,8 @@ public class BridgeService {
     private static volatile int shellServerPid = -1;
     private static volatile String rootRegisterToken;
     private static volatile String shellRegisterToken;
+    /** pid of the process that registered the tokens above, so a later registration cannot silently replace them. */
+    private static volatile int tokenRegisteredPid;
 
     public static IShizukuService get() {
         IBinder binder = rootServiceBinder;
@@ -309,9 +311,19 @@ public class BridgeService {
 
                     if (!isValidToken(rToken) || !isValidToken(sToken)) {
                         LOGGER.w("reject invalid bridge tokens");
+                    } else if (tokenRegisteredPid > 0
+                            && tokenRegisteredPid != callingPid
+                            && isPidAlive(tokenRegisteredPid)) {
+                        // Do not let a second root process silently steal the routing tokens while
+                        // the process that owns them is still alive. A dead owner (the server was
+                        // restarted) is fine and gets replaced.
+                        LOGGER.w(
+                                "reject token registration from pid=%d: tokens are owned by live pid=%d",
+                                callingPid, tokenRegisteredPid);
                     } else {
                         rootRegisterToken = rToken;
                         shellRegisterToken = sToken;
+                        tokenRegisteredPid = callingPid;
                         accepted = true;
                         LOGGER.i("bridge tokens registered by root pid=%d", callingPid);
                     }
@@ -325,6 +337,17 @@ public class BridgeService {
             }
         }
         return false;
+    }
+
+    private static boolean isPidAlive(int pid) {
+        if (pid <= 0) {
+            return false;
+        }
+        try {
+            return new java.io.File("/proc/" + pid).exists();
+        } catch (Throwable e) {
+            return false;
+        }
     }
 
     private static boolean isServerUid(int uid) {
@@ -347,6 +370,8 @@ public class BridgeService {
             return shellServiceBinder;
         }
 
+        // No permission flag at all: hand out the root server anyway and let it answer with a
+        // proper "permission denied" instead of pretending that no server is running.
         return rootServiceBinder;
     }
 

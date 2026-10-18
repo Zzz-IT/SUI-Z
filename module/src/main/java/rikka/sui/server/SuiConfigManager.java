@@ -91,6 +91,8 @@ public class SuiConfigManager extends ConfigManager {
 
     private final java.util.concurrent.atomic.AtomicLong shellSyncVersion =
             new java.util.concurrent.atomic.AtomicLong();
+    /** Last content written to the shell uid list, used to skip unchanged rewrites. */
+    private volatile String lastShellUidsContent;
     private final SuiConfig config;
     private final Map<Integer, SuiConfig.PackageEntry> packageIndex = new HashMap<>();
     private final Runnable syncUidsToShellFileRunnable = this::syncUidsToShellFile;
@@ -244,22 +246,50 @@ public class SuiConfigManager extends ConfigManager {
                     sb.append(entry.uid).append(":").append(entry.flags).append("\n");
                 }
             }
+            String content = sb.toString();
+
             java.io.File dir = getShellDir();
             if (!dir.exists()) dir.mkdirs();
             java.io.File file = new java.io.File(dir, SHELL_CONFIG_FILENAME);
+
+            // Skip the write when nothing changed: this is called on every permission change and
+            // each write is a full rewrite plus an fsync, which is pure flash wear otherwise.
+            if (content.equals(lastShellUidsContent) && file.exists()) {
+                return;
+            }
+
             java.io.File tempFile = new java.io.File(dir, SHELL_CONFIG_FILENAME + ".tmp");
             try (java.io.FileOutputStream fos = new java.io.FileOutputStream(tempFile)) {
-                fos.write(sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                fos.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 fos.getFD().sync();
             }
 
+            // Set owner and mode on the temp file BEFORE it is published: after the rename there
+            // is a window where the file exists with the default (umask derived) mode, and if the
+            // chmod then fails the list stays world readable for good.
+            applyShellFileAttrs(tempFile);
+
             if (tempFile.renameTo(file)) {
-                android.system.Os.chmod(file.getAbsolutePath(), 0644);
+                lastShellUidsContent = content;
             } else {
                 LOGGER.w("rename shell config temp file failed: %s -> %s", tempFile, file);
+                tempFile.delete();
             }
         } catch (Throwable e) {
             LOGGER.e(e, "sync uids to shell");
+        }
+    }
+
+    /**
+     * The shell server runs as uid 2000 and only needs to read these files, so they are owned by
+     * it with mode 0600 instead of being readable by every app on the device.
+     */
+    private void applyShellFileAttrs(java.io.File file) {
+        try {
+            android.system.Os.chown(file.getAbsolutePath(), 2000, 2000);
+            android.system.Os.chmod(file.getAbsolutePath(), 0600);
+        } catch (Throwable e) {
+            LOGGER.w(e, "chown/chmod shell file %s", file);
         }
     }
 
@@ -551,15 +581,13 @@ public class SuiConfigManager extends ConfigManager {
             return;
         }
 
-        if (tempFile.renameTo(tokenFile)) {
-            try {
-                android.system.Os.chown(tokenFile.getAbsolutePath(), 2000, 2000);
-                android.system.Os.chmod(tokenFile.getAbsolutePath(), 0600);
-            } catch (Throwable e) {
-                LOGGER.w(e, "chown/chmod bridge token");
-            }
-        } else {
+        // Apply owner and mode before publishing, so the token is never briefly world readable
+        // and never stays world readable when the chmod would have failed after the rename.
+        applyShellFileAttrs(tempFile);
+
+        if (!tempFile.renameTo(tokenFile)) {
             LOGGER.w("rename bridge token failed");
+            tempFile.delete();
         }
     }
 

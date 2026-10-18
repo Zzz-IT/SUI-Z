@@ -74,16 +74,22 @@ if [ "$KSU" = true ]; then
   apply_sepolicy() {
     ksud sepolicy apply "$1"
   }
-elif [  "$KERNELPATCH" = true  ]; then
-  kp_major_char=${KERNELPATCH_VERSION:0:1}
-  kp_minor_patch=${KERNELPATCH_VERSION:1}
-
-  kp_major=$(( $(printf '%d' "'$kp_major_char") - 97 ))
-  kp_minor=$(( 10 + ${kp_minor_patch:0:1} ))
-  kp_patch=${kp_minor_patch:1}
+elif [ "$KERNELPATCH" = true ]; then
+  # ${var:0:1} is a bash/mksh extension, not POSIX: /system/bin/sh is mksh today, but anywhere
+  # else the slicing silently produced empty strings and printf then got no argument.
+  kp_version="$KERNELPATCH_VERSION"
+  kp_major_char="$(printf '%s' "$kp_version" | cut -c1)"
+  kp_minor_patch="$(printf '%s' "$kp_version" | cut -c2-)"
 
   log -p i -t "Sui" "APatch version $APATCH_VER ($APATCH_VER_CODE)"
-  log -p i -t "Sui" "KernelPatch version $kp_major.$kp_minor.$kp_patch"
+  if [ -n "$kp_major_char" ] && [ -n "$kp_minor_patch" ]; then
+    kp_major=$(( $(printf '%d' "'$kp_major_char") - 97 ))
+    kp_minor=$(( 10 + $(printf '%s' "$kp_minor_patch" | cut -c1) ))
+    kp_patch="$(printf '%s' "$kp_minor_patch" | cut -c2-)"
+    log -p i -t "Sui" "KernelPatch version $kp_major.$kp_minor.$kp_patch"
+  else
+    log -p w -t "Sui" "KernelPatch version is empty or malformed: [$kp_version]"
+  fi
   apply_sepolicy() {
     apd sepolicy apply "$1"
   }
@@ -102,13 +108,15 @@ enable_once="/data/adb/sui/enable_adb_root_once"
 enable_forever="/data/adb/sui/enable_adb_root"
 adb_root_exit=0
 
-if [ -f $enable_once ]; then
+# Quoted: an unquoted expansion word-splits and glob-expands, so a path containing a space
+# (or a stray "*" in the directory) made the test and the rm act on the wrong file.
+if [ -f "$enable_once" ]; then
   log -p i -t "Sui" "adb root support is enabled for this time of boot"
-  rm $enable_once
+  rm -f "$enable_once"
   enable_adb_root=true
 fi
 
-if [ -f $enable_forever ]; then
+if [ -f "$enable_forever" ]; then
   log -p i -t "Sui" "adb root support is enabled forever"
   enable_adb_root=true
 fi

@@ -214,8 +214,8 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
     }
 
     private void invalidatePackages(
-            int uid, @NonNull java.util.Collection<String> packageNames, boolean autoRestart, String reason) {
-        if (packageNames.isEmpty()) {
+            int uid, @Nullable java.util.Collection<String> packageNames, boolean autoRestart, String reason) {
+        if (packageNames == null || packageNames.isEmpty()) {
             return;
         }
 
@@ -240,7 +240,12 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
     }
 
     private void invalidatePackagesForUid(int uid, boolean autoRestart, String reason) {
+        // getPackagesForUidNoThrow() returns null when the package manager cannot answer, e.g.
+        // right after a package was removed or while the system is still booting.
         List<String> packages = PackageManagerApis.getPackagesForUidNoThrow(uid);
+        if (packages == null || packages.isEmpty()) {
+            return;
+        }
         invalidatePackages(uid, packages, autoRestart, reason);
     }
 
@@ -396,15 +401,7 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
         DelegatedPermissionCallback callback = delegatedPermissionCallbacks.get(key);
         if (callback != null) {
             removeDelegatedPermissionCallback(key, callback);
-            android.os.Parcel cbData = android.os.Parcel.obtain();
-            try {
-                cbData.writeInt(allowed ? 1 : 0);
-                callback.binder.transact(1, cbData, null, android.os.IBinder.FLAG_ONEWAY);
-            } catch (Throwable e) {
-                LOGGER.w(e, "Failed to call delegated permission callback");
-            } finally {
-                cbData.recycle();
-            }
+            answerDelegatedPermissionCallback(callback, allowed);
         }
 
         if (!onetime) {
@@ -494,13 +491,20 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
 
         @Override
         public void binderDied() {
+            // The caller is gone, so there is nobody left to answer; only release our bookkeeping.
             removeDelegatedPermissionCallback(key, this);
         }
 
         @Override
         public void run() {
+            // Nobody answered in time (the root server never came back, the dialog was never
+            // shown, ...). Answer the caller with a denial instead of dropping the request, so
+            // the requesting app gets its result callback instead of waiting forever.
             LOGGER.w("delegated permission callback timed out: %s", key);
-            removeDelegatedPermissionCallback(key, this);
+            if (delegatedPermissionCallbacks.remove(key, this)) {
+                answerDelegatedPermissionCallback(this, false);
+                destroyDelegatedPermissionCallback(this);
+            }
         }
     }
 
@@ -528,7 +532,36 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
             return;
         }
         mainHandler.removeCallbacks(callback);
-        callback.binder.unlinkToDeath(callback, 0);
+        try {
+            callback.binder.unlinkToDeath(callback, 0);
+        } catch (Throwable e) {
+            // unlinkToDeath throws NoSuchElementException once the death recipient has already
+            // fired (the binder died) or was never registered. This runs on a binder / main
+            // thread, so letting it escape would kill the server process.
+            LOGGER.w(e, "unlinkToDeath failed for delegated permission callback");
+        }
+    }
+
+    private void answerDelegatedPermissionCallback(DelegatedPermissionCallback callback, boolean allowed) {
+        if (callback == null) {
+            return;
+        }
+        answerDelegatedPermissionBinder(callback.binder, allowed);
+    }
+
+    private void answerDelegatedPermissionBinder(android.os.IBinder binder, boolean allowed) {
+        if (binder == null) {
+            return;
+        }
+        android.os.Parcel cbData = android.os.Parcel.obtain();
+        try {
+            cbData.writeInt(allowed ? 1 : 0);
+            binder.transact(1, cbData, null, android.os.IBinder.FLAG_ONEWAY);
+        } catch (Throwable e) {
+            LOGGER.w(e, "Failed to answer delegated permission callback");
+        } finally {
+            cbData.recycle();
+        }
     }
 
     private void putDelegatedPermissionCallback(String key, android.os.IBinder binder) {
@@ -575,21 +608,22 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
 
     private int[] getRootUidsWithSystem() {
         int[] rootUids = configManager.getRootUids();
-        java.util.ArrayList<Integer> result = new java.util.ArrayList<>();
 
-        for (int uid : rootUids) {
-            result.add(uid);
-        }
+        // A primitive array instead of ArrayList<Integer>: no Integer boxing per uid and no
+        // second copy. The consumer (SystemProcess) sorts and binary-searches the result, so
+        // the order here does not matter.
+        int extraCount = 1; // uid 1000, the system user
+        if (systemUiUid > 0) extraCount++;
+        if (settingsUid > 0) extraCount++;
 
-        if (systemUiUid > 0) result.add(systemUiUid);
-        if (settingsUid > 0) result.add(settingsUid);
-        result.add(1000);
+        int[] result = new int[rootUids.length + extraCount];
+        System.arraycopy(rootUids, 0, result, 0, rootUids.length);
 
-        int[] array = new int[result.size()];
-        for (int i = 0; i < result.size(); i++) {
-            array[i] = result.get(i);
-        }
-        return array;
+        int size = rootUids.length;
+        if (systemUiUid > 0) result[size++] = systemUiUid;
+        if (settingsUid > 0) result[size++] = settingsUid;
+        result[size] = 1000;
+        return result;
     }
 
     private final Runnable registerTask = new Runnable() {
@@ -653,11 +687,62 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
                 syncUidsToSystemServer();
             }
 
-            if ((systemUiUid <= 0 || settingsUid <= 0) && attempts++ < 30) {
-                mainHandler.postDelayed(this, 1000);
+            if (systemUiUid <= 0 || settingsUid <= 0) {
+                // Poll quickly right after boot, then keep a slow retry instead of giving up for
+                // good: a manager that is installed / enabled later, or a package manager that is
+                // still busy during boot, must still be picked up. Without this the uid stays 0
+                // and every permission dialog result gets dropped.
+                attempts++;
+                mainHandler.postDelayed(this, attempts <= 30 ? 1000 : 60000);
             }
         }
     };
+
+    private static final long MANAGER_UID_RESOLVE_INTERVAL_MS = 5000L;
+
+    private long lastManagerUidResolveAt;
+
+    /**
+     * Resolve the manager / settings uid on demand when the boot time polling did not manage to
+     * find them. Throttled, because this can be called from the hot path of every binder
+     * transaction coming from system_server.
+     */
+    private void ensureManagerUidsResolved() {
+        if (systemUiUid > 0 && settingsUid > 0) {
+            return;
+        }
+
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now - lastManagerUidResolveAt < MANAGER_UID_RESOLVE_INTERVAL_MS) {
+            return;
+        }
+        lastManagerUidResolveAt = now;
+
+        boolean changed = false;
+        if (systemUiUid <= 0) {
+            int uid = findPackageUid(MANAGER_APPLICATION_ID);
+            if (uid > 0) {
+                systemUiUid = uid;
+                changed = true;
+            }
+        }
+        if (settingsUid <= 0) {
+            int uid = findPackageUid(SettingsPackages.SETTINGS_CANDIDATES);
+            if (uid > 0) {
+                settingsUid = uid;
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            LOGGER.i(
+                    "resolved manager uid on demand: systemUiUid=%d settingsUid=%d",
+                    systemUiUid, settingsUid);
+            if (!shellMode) {
+                syncUidsToSystemServer();
+            }
+        }
+    }
 
     public SuiService() {
         super();
@@ -854,11 +939,15 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
             return false;
         }
 
+        ensureManagerUidsResolved();
+
         return uid != systemUiUid && uid != settingsUid && configManager.isHidden(uid);
     }
 
     @Override
     public void dispatchPermissionConfirmationResult(int requestUid, int requestPid, int requestCode, Bundle data) {
+        ensureManagerUidsResolved();
+
         int callingUid = Binder.getCallingUid();
         if (callingUid != systemUiUid) {
             LOGGER.w(
@@ -1203,16 +1292,19 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
 
             if (callingUid == 2000 && !rikka.sui.server.bridge.BridgeServiceClient.isValidShellDelegateToken(delegateToken)) {
                 LOGGER.w("requestPermissionFromShell rejected: invalid shell delegate token from uid=%d", callingUid);
+                answerDelegatedPermissionBinder(callback, false);
                 return false;
             }
 
             if (reqUid < 10000) {
                 LOGGER.w("requestPermissionFromShell rejected: invalid app uid %d", reqUid);
+                answerDelegatedPermissionBinder(callback, false);
                 return false;
             }
 
             if (requestCode < 0) {
                 LOGGER.w("requestPermissionFromShell rejected: invalid requestCode %d", requestCode);
+                answerDelegatedPermissionBinder(callback, false);
                 return false;
             }
 
@@ -1222,15 +1314,17 @@ public class SuiService extends Service<SuiUserServiceManager, SuiClientManager,
             }
 
             List<String> packages = PackageManagerApis.getPackagesForUidNoThrow(reqUid);
-            if (packageName == null || !packages.contains(packageName)) {
+            if (packageName == null || packages == null || !packages.contains(packageName)) {
                 LOGGER.w(
                         "requestPermissionFromShell rejected: package %s does not belong to uid %d",
                         packageName, reqUid);
+                answerDelegatedPermissionBinder(callback, false);
                 return false;
             }
 
             if (reqPid <= 0) {
                 LOGGER.w("requestPermissionFromShell rejected: invalid pid %d for uid %d", reqPid, reqUid);
+                answerDelegatedPermissionBinder(callback, false);
                 return false;
             }
 

@@ -3,7 +3,6 @@ package rikka.shizuku.server;
 import android.os.IBinder;
 import android.os.RemoteException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import moe.shizuku.server.IShizukuApplication;
 import rikka.shizuku.server.util.Logger;
@@ -13,7 +12,10 @@ public class ClientManager<ConfigMgr extends ConfigManager> {
     protected static final Logger LOGGER = new Logger("UserServiceRecord");
 
     private final ConfigMgr configManager;
-    private final List<ClientRecord> clientRecords = Collections.synchronizedList(new ArrayList<>());
+    // Guarded by "this" for every read and write: iteration plus add/remove must share one lock,
+    // a synchronizedList only locks each individual call and still throws
+    // ConcurrentModificationException when it is iterated while another thread adds or removes.
+    private final List<ClientRecord> clientRecords = new ArrayList<>();
 
     public ClientManager(ConfigMgr configManager) {
         this.configManager = configManager;
@@ -24,7 +26,9 @@ public class ClientManager<ConfigMgr extends ConfigManager> {
     }
 
     public List<ClientRecord> getClients() {
-        return clientRecords;
+        synchronized (this) {
+            return new ArrayList<>(clientRecords);
+        }
     }
 
     public List<ClientRecord> findClients(int uid) {
@@ -40,12 +44,14 @@ public class ClientManager<ConfigMgr extends ConfigManager> {
     }
 
     public ClientRecord findClient(int uid, int pid) {
-        for (ClientRecord clientRecord : clientRecords) {
-            if (clientRecord.pid == pid && clientRecord.uid == uid) {
-                return clientRecord;
+        synchronized (this) {
+            for (ClientRecord clientRecord : clientRecords) {
+                if (clientRecord.pid == pid && clientRecord.uid == uid) {
+                    return clientRecord;
+                }
             }
+            return null;
         }
-        return null;
     }
 
     public ClientRecord requireClient(int callingUid, int callingPid) {
@@ -73,7 +79,11 @@ public class ClientManager<ConfigMgr extends ConfigManager> {
         }
 
         IBinder binder = client.asBinder();
-        IBinder.DeathRecipient deathRecipient = () -> clientRecords.remove(clientRecord);
+        IBinder.DeathRecipient deathRecipient = () -> {
+            synchronized (ClientManager.this) {
+                clientRecords.remove(clientRecord);
+            }
+        };
         try {
             binder.linkToDeath(deathRecipient, 0);
         } catch (RemoteException e) {
@@ -81,7 +91,9 @@ public class ClientManager<ConfigMgr extends ConfigManager> {
             return null;
         }
 
-        clientRecords.add(clientRecord);
+        synchronized (this) {
+            clientRecords.add(clientRecord);
+        }
         return clientRecord;
     }
 }

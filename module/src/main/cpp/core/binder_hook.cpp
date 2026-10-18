@@ -18,6 +18,7 @@
  */
 
 #include <cstring>
+#include <mutex>
 #include <nativehelper/scoped_local_ref.h>
 #include <pthread.h>
 #include <unistd.h>
@@ -26,6 +27,11 @@
 #include "logging.h"
 #include <android.h>
 #include <plt.h>
+
+// Guards every static below: Install() may run on the JNI thread while another thread is
+// already inside the hooked CallBooleanMethodV / GetEnv path.
+static std::mutex hook_mutex;
+static bool installed = false;
 
 static jmethodID original_execTransactMethodID;
 
@@ -92,6 +98,11 @@ static bool InstallOverrideTable() {
 }
 
 void BinderHook::Install(JavaVM* javaVm, JNIEnv* env, ExecTransact_t* callback) {
+    std::lock_guard<std::mutex> lock(hook_mutex);
+    if (installed) {
+        LOGW("binder hook is already installed");
+        return;
+    }
     my_ExecTransact = callback;
 
     // Binder
@@ -111,12 +122,24 @@ void BinderHook::Install(JavaVM* javaVm, JNIEnv* env, ExecTransact_t* callback) 
         LOGW("can't install override table");
         InstallDirectly(javaVm, env);
     }
+
+    installed = true;
 }
 
 void BinderHook::Uninstall(JavaVM* javaVm) {
-    javaVm->functions = old_JNIInvokeInterface;
+    std::lock_guard<std::mutex> lock(hook_mutex);
+    // old_JNIInvokeInterface is null when the override table was used instead of patching the
+    // JavaVM table directly; writing it back would install a null table and crash the process.
+    if (old_JNIInvokeInterface != nullptr) {
+        javaVm->functions = old_JNIInvokeInterface;
+        old_JNIInvokeInterface = nullptr;
+    }
 }
 
 void BinderHook::Uninstall(JNIEnv* env) {
-    env->functions = old_JNINativeInterface;
+    std::lock_guard<std::mutex> lock(hook_mutex);
+    if (old_JNINativeInterface != nullptr) {
+        env->functions = old_JNINativeInterface;
+        old_JNINativeInterface = nullptr;
+    }
 }

@@ -211,6 +211,18 @@ cleanup:
     return success;
 }
 
+static void logHiddenCheckFailure(uid_t uid) {
+    // LOGW compiles away in release builds, so keep the parameter referenced to avoid a
+    // -Wunused-parameter warning there.
+    (void) uid;
+    static auto last_error = std::chrono::steady_clock::time_point{};
+    auto now = std::chrono::steady_clock::now();
+    if (now - last_error > std::chrono::seconds(10)) {
+        last_error = now;
+        LOGW("isUidHiddenEffective threw for uid=%d, hidden uid check skipped", (int)uid);
+    }
+}
+
 /*
  * return true = consumed
  */
@@ -242,9 +254,25 @@ static bool ExecTransact(jboolean* res, JNIEnv* env, jobject obj, va_list args) 
             uid = get_uid_ndk();
         } else if (getCallingUidMethodID) {
             uid = (uid_t)env->CallStaticIntMethod(javaBinderClass, getCallingUidMethodID);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                uid = (uid_t)-1;
+            }
         }
 
-        if (uid != (uid_t)-1 && uid >= 10000) {
+        if (uid == (uid_t)-1) {
+            // Without a calling uid the hidden uid checks below cannot run at all. Serving the
+            // transaction anyway would hand the bridge to a hidden app, so refuse it instead.
+            static auto last_uid_error = std::chrono::steady_clock::time_point{};
+            auto now = std::chrono::steady_clock::now();
+            if (now - last_uid_error > std::chrono::seconds(10)) {
+                last_uid_error = now;
+                LOGW("unable to determine the calling uid of a bridge transaction, dropping it");
+            }
+            return false;
+        }
+
+        if (uid >= 10000) {
             uid_t app_id = uid % 100000;
 
             if (app_id >= 99000 && app_id <= 99999) {
@@ -261,13 +289,15 @@ static bool ExecTransact(jboolean* res, JNIEnv* env, jobject obj, va_list args) 
             if (isUidHiddenEffectiveMethodID &&
                 env->CallStaticBooleanMethod(mainClass, isUidHiddenEffectiveMethodID, (jint)uid)) {
                 if (env->ExceptionCheck()) {
-                    env->ExceptionDescribe();
+                    // ExceptionDescribe() would dump a full stack trace into logcat on every
+                    // single bridge transaction; a rate limited warning is enough.
+                    logHiddenCheckFailure(uid);
                     env->ExceptionClear();
                 } else {
                     return false;
                 }
             } else if (env->ExceptionCheck()) {
-                env->ExceptionDescribe();
+                logHiddenCheckFailure(uid);
                 env->ExceptionClear();
             }
         }

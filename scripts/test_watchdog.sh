@@ -310,11 +310,17 @@ if grep -qE 'LOCK_DIR="/data/adb/sui/watchdog.lock"' "$SERVICE" \
 else
     bad "production default paths changed"
 fi
-if grep -qE '\blocal\b|\bdeclare\b|\[\[|function [a-z]' "$SERVICE"; then
-    bad "uses bash-only syntax; /system/bin/sh is mksh, not bash"
-else
-    ok "POSIX-only syntax (no local/declare/[[)"
-fi
+# Both boot scripts are executed by /system/bin/sh, so both are checked, not just service.sh.
+# Comments are stripped from the match: a comment that explains why ${var:0:1} is not
+# used would otherwise be reported as if it used it.
+for f in "$SERVICE" "$ROOT/template/magisk_module/post-fs-data.sh"; do
+    if grep -nE '\blocal\b|\bdeclare\b|\[\[|function [a-z]|\$\{[A-Za-z_][A-Za-z0-9_]*:[0-9]' "$f" \
+        | grep -vqE '^[0-9]+:[[:space:]]*#'; then
+        bad "$(basename "$f") uses bash-only syntax; /system/bin/sh is mksh, not bash"
+    else
+        ok "POSIX-only syntax in $(basename "$f") (no local/declare/[[/substring)"
+    fi
+done
 
 # ---------------------------------------------------------------------------
 echo "-- line endings"

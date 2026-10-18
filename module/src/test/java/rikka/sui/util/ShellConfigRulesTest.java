@@ -23,6 +23,13 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.junit.Test;
 
@@ -193,5 +200,89 @@ public class ShellConfigRulesTest {
         assertEquals("sui_shell_", ShellConfigRules.SHELL_DIR_PREFIX);
         assertEquals("sui_shell", ShellConfigRules.LEGACY_SHELL_DIR_NAME);
         assertEquals("/data/adb/sui/shell_dir_name", ShellConfigRules.SHELL_DIR_MARKER);
+    }
+
+    // ------------------------------------------------------------------
+    // Cross-language guard: the native header must agree with this class.
+    // ------------------------------------------------------------------
+
+    private static final String NATIVE_HEADER_RELATIVE_PATH = "module/src/main/cpp/main/sui_main.hpp";
+
+    @Test
+    public void nativeHeaderConstants_matchThisClass() throws Exception {
+        // Pinning the Java literals above only catches a Java-side edit. Nothing used to
+        // look at sui_main.hpp, so editing the header alone -- the more likely mistake,
+        // since it is the copy nobody compiles on a phone-less machine -- produced two
+        // servers that disagreed about the shell workdir name, and every app silently lost
+        // its shell permission. Read the header and compare the actual string literals.
+        String header = readNativeHeader();
+
+        assertEquals(ShellConfigRules.SHELL_BASE_DIR, nativeStringConstant(header, "SHELL_BASE_DIR"));
+        assertEquals(ShellConfigRules.SHELL_DIR_PREFIX, nativeStringConstant(header, "SHELL_DIR_PREFIX"));
+        assertEquals(
+                ShellConfigRules.LEGACY_SHELL_DIR_NAME,
+                nativeStringConstant(header, "LEGACY_SHELL_DIR_NAME"));
+        assertEquals(ShellConfigRules.SHELL_DIR_MARKER, nativeStringConstant(header, "SHELL_DIR_MARKER"));
+
+        // The legacy absolute path is derived, not independent: check it too so a change to
+        // either part cannot leave a stale absolute path behind.
+        assertEquals(
+                ShellConfigRules.SHELL_BASE_DIR + "/" + ShellConfigRules.LEGACY_SHELL_DIR_NAME,
+                nativeStringConstant(header, "LEGACY_SHELL_DIR"));
+    }
+
+    @Test
+    public void nativeHeader_usesTheLegacyNameConstantEverywhere() throws Exception {
+        // is_valid_shell_dir_name() and resolve_shell_dir_path() used to compare against the
+        // literal "sui_shell" instead of the constant, so the constant could be renamed while
+        // those comparisons stayed behind and the legacy directory stopped being recognised.
+        String header = readNativeHeader();
+        assertEquals(
+                "LEGACY_SHELL_DIR_NAME should be declared exactly once",
+                1,
+                countOccurrences(header, "const char* LEGACY_SHELL_DIR_NAME"));
+        // Two occurrences are legitimate: the constant declaration itself, and the argv[0]
+        // process name handed to app_process (a name, not a directory). A third one means a
+        // path comparison was written against the literal again.
+        assertEquals(
+                "the legacy name should appear only as the constant and as the app_process name",
+                2,
+                countOccurrences(header, "\"sui_shell\""));
+    }
+
+    private static String readNativeHeader() throws Exception {
+        File dir = new File("").getAbsoluteFile();
+        for (int i = 0; i < 6 && dir != null; i++, dir = dir.getParentFile()) {
+            File candidate = new File(dir, NATIVE_HEADER_RELATIVE_PATH);
+            if (candidate.isFile()) {
+                return new String(Files.readAllBytes(candidate.toPath()), StandardCharsets.UTF_8);
+            }
+        }
+        fail("cannot locate " + NATIVE_HEADER_RELATIVE_PATH + " from "
+                + new File("").getAbsolutePath() + "; the native/Java constant guard cannot run");
+        return null;
+    }
+
+    private static String nativeStringConstant(String header, String name) {
+        Pattern pattern = Pattern.compile(
+                "static\\s+constexpr\\s+const\\s+char\\s*\\*\\s*" + Pattern.quote(name)
+                        + "\\s*=\\s*\"([^\"]*)\"\\s*;");
+        Matcher matcher = pattern.matcher(header);
+        if (!matcher.find()) {
+            fail("constant " + name + " is not declared as a static constexpr const char* in "
+                    + NATIVE_HEADER_RELATIVE_PATH);
+            return null;
+        }
+        return matcher.group(1);
+    }
+
+    private static int countOccurrences(String haystack, String needle) {
+        int count = 0;
+        int index = haystack.indexOf(needle);
+        while (index >= 0) {
+            count++;
+            index = haystack.indexOf(needle, index + needle.length());
+        }
+        return count;
     }
 }

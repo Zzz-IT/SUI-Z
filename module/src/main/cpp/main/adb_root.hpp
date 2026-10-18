@@ -18,6 +18,7 @@
  */
 
 #include <sys/mount.h>
+#include <cstring>
 #include <private/ScopedFd.h>
 #include <sys/mman.h>
 #include <cinttypes>
@@ -53,6 +54,12 @@ struct attrs {
     mode_t mode{};
     char* context{nullptr};
     bool is_malloced{false};
+
+    attrs() = default;
+
+    // Copying would duplicate the raw context pointer and free it twice.
+    attrs(const attrs&) = delete;
+    attrs& operator=(const attrs&) = delete;
 
     ~attrs() {
         if (context) {
@@ -165,6 +172,16 @@ inline bool is_dynamically_linked(const char* path) {
     }
 
     auto ehdr = (ElfW(Ehdr)*)data;
+
+    // Validate the header before dereferencing anything: a truncated or non-ELF file would
+    // otherwise be read out of bounds or raise SIGBUS.
+    if ((size_t)st.st_size < sizeof(ElfW(Ehdr)) ||
+        memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0) {
+        LOGE("Not an ELF file: %s", path);
+        munmap(data, st.st_size);
+        return false;
+    }
+
 #ifdef __LP64__
     if (ehdr->e_ident[EI_CLASS] != ELFCLASS64) {
         LOGE("Not elf64");
@@ -178,6 +195,15 @@ inline bool is_dynamically_linked(const char* path) {
         return false;
     }
 #endif
+
+    // The program header table must lie completely inside the mapped file.
+    if (ehdr->e_phentsize != sizeof(ElfW(Phdr)) ||
+        (size_t)ehdr->e_phoff > (size_t)st.st_size ||
+        (size_t)ehdr->e_phnum > ((size_t)st.st_size - (size_t)ehdr->e_phoff) / sizeof(ElfW(Phdr))) {
+        LOGE("Invalid program header table: %s", path);
+        munmap(data, st.st_size);
+        return false;
+    }
 
     bool is_dynamically_linked = false;
 
@@ -264,13 +290,32 @@ inline int setup_adb_root_apex(const char* root_path, const char* adbd_wrapper,
             continue;
 
         const char* version_string = entry->d_name + adbd_prefix.length();
-        uint64_t new_version = strtoull(version_string, nullptr, 10);
-        if (new_version >= version) {
-            version = new_version;
-            strncpy(versioned_adbd + apex.length(), d_name.data(), d_name.length());
-            LOGI("Found versioned apex %s", versioned_adbd);
-            found = true;
+        char* version_end = nullptr;
+        errno = 0;
+        unsigned long long new_version = strtoull(version_string, &version_end, 10);
+        if (version_end == version_string || errno == ERANGE) {
+            LOGW("skip apex with unparsable version: %s", entry->d_name);
+            continue;
         }
+
+        // Equal versions are resolved by name so that the choice does not depend on the
+        // readdir() order of /apex.
+        bool better = !found || new_version > version ||
+                      (new_version == version &&
+                       std::string_view(entry->d_name) > std::string_view(versioned_adbd + apex.length()));
+        if (!better)
+            continue;
+
+        if (apex.length() + d_name.length() >= sizeof(versioned_adbd)) {
+            LOGW("apex name is too long: %s", entry->d_name);
+            continue;
+        }
+
+        version = new_version;
+        memcpy(versioned_adbd + apex.length(), d_name.data(), d_name.length());
+        versioned_adbd[apex.length() + d_name.length()] = '\0';
+        LOGI("Found versioned apex %s", versioned_adbd);
+        found = true;
     }
 
     if (!found) {
@@ -563,10 +608,13 @@ static int setup_adb_root(const char* root_path) {
         return ERR_OTHER;
     }
 
-    attrs seclabel_attr = data_adb_attr;
+    // Built field by field: attrs owns its context and is not copyable.
+    attrs seclabel_attr{};
+    seclabel_attr.uid = data_adb_attr.uid;
+    seclabel_attr.gid = data_adb_attr.gid;
+    seclabel_attr.mode = 0600;
     seclabel_attr.context = strdup(data_adb_attr.context);
     seclabel_attr.is_malloced = true;
-    seclabel_attr.mode = 0600;
     if (!seclabel_attr.context) {
         PLOGE("strdup /data/adb context");
         freecon(curr_con);

@@ -31,6 +31,23 @@ import rikka.sui.util.BridgeConstants;
 
 public class RootBridgeDelegate {
 
+    /**
+     * Answer the requesting app when the delegation could not even reach the root server.
+     * Without this the app waits for a result callback that never arrives, so the permission
+     * dialog never closes from its point of view.
+     */
+    private static void dispatchFailure(
+            SuiClientManager clientManager, int requestCode, int callingUid, int callingPid) {
+        try {
+            ClientRecord record = clientManager.findClient(callingUid, callingPid);
+            if (record != null) {
+                record.dispatchRequestPermissionResult(requestCode, false);
+            }
+        } catch (Throwable e) {
+            LOGGER.w(e, "dispatchFailure");
+        }
+    }
+
     public static void delegatePermissionConfirmationToRoot(
             SuiClientManager clientManager, int requestCode, String packageName, int callingUid, int callingPid) {
 
@@ -55,7 +72,11 @@ public class RootBridgeDelegate {
         Parcel reply = null;
         try {
             IBinder bridgeService = ServiceManager.getService(BridgeConstants.SERVICE_NAME);
-            if (bridgeService == null) return;
+            if (bridgeService == null) {
+                LOGGER.e("bridge service is not available, cannot delegate.");
+                dispatchFailure(clientManager, requestCode, callingUid, callingPid);
+                return;
+            }
             data = Parcel.obtain();
             reply = Parcel.obtain();
             data.writeInterfaceToken(BridgeConstants.SERVICE_DESCRIPTOR);
@@ -91,9 +112,11 @@ public class RootBridgeDelegate {
                 data = null;
             } else {
                 LOGGER.e("root binder is null, cannot delegate.");
+                dispatchFailure(clientManager, requestCode, callingUid, callingPid);
             }
         } catch (Throwable e) {
             LOGGER.e(e, "delegatePermissionConfirmationToRoot");
+            dispatchFailure(clientManager, requestCode, callingUid, callingPid);
         } finally {
             if (data != null) {
                 data.recycle();

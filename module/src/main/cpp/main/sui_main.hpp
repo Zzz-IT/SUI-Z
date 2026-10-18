@@ -30,16 +30,17 @@
 #include <string>
 #include <dirent.h>
 
-// These four constants, and the rules in is_valid_shell_dir_name() /
-// resolve_shell_dir_path() below, are duplicated from
+// The string constants below, and the rules in is_valid_shell_dir_name() /
+// resolve_shell_dir_path(), are duplicated from
 // module/src/main/java/rikka/sui/util/ShellConfigRules.java.
 //
 // The duplication is unavoidable -- this is native code and that is the ART-side
 // definition -- but it is also dangerous: if the two ever disagree, the root
 // server publishes a directory name the shell server refuses to resolve, and
-// every app silently loses its shell permission. ShellConfigRulesTest pins the
-// Java behaviour; change that class's tests and change these rules together.
+// every app silently loses its shell permission. ShellConfigRulesTest reads this
+// header and compares the literals, so edit both sides together.
 static constexpr const char* SUI_DATA_DIR = "/data/adb/sui";
+static constexpr const char* LEGACY_SHELL_DIR_NAME = "sui_shell";
 static constexpr const char* LEGACY_SHELL_DIR = "/data/local/tmp/sui_shell";
 static constexpr const char* SHELL_BASE_DIR = "/data/local/tmp";
 static constexpr const char* SHELL_DIR_PREFIX = "sui_shell_";
@@ -60,7 +61,7 @@ static std::string trim_copy(const std::string& input) {
 }
 
 static bool is_valid_shell_dir_name(const std::string& name) {
-    if (name == "sui_shell") {
+    if (name == LEGACY_SHELL_DIR_NAME) {
         return true;
     }
     if (name.rfind(SHELL_DIR_PREFIX, 0) != 0) {
@@ -78,12 +79,21 @@ static bool read_file_line(const char* path, std::string& out) {
     int fd = open(path, O_RDONLY | O_CLOEXEC);
     if (fd < 0)
         return false;
-    char buf[256]{0};
-    ssize_t r = read(fd, buf, sizeof(buf) - 1);
+    // Read to EOF instead of one fixed size chunk: a truncated read would return half of the
+    // directory name, and the shell server would then resolve a directory that does not exist.
+    std::string content;
+    char buf[512];
+    ssize_t r;
+    while ((r = read(fd, buf, sizeof(buf))) > 0) {
+        content.append(buf, static_cast<size_t>(r));
+        if (content.size() > 4096) {
+            break;
+        }
+    }
     close(fd);
-    if (r <= 0)
+    if (content.empty())
         return false;
-    out = trim_copy(std::string(buf, static_cast<size_t>(r)));
+    out = trim_copy(content);
     return !out.empty();
 }
 
@@ -136,7 +146,46 @@ static std::string generate_unique_shell_dir_name() {
     return std::string(fallback);
 }
 
+// Best effort recursive removal, bounded in depth and never following symlinks: the legacy
+// directory can contain sub directories, and leaving them behind means rmdir() always fails and
+// the legacy directory (with its world readable uid list) stays around forever.
+static void remove_path_recursive_best_effort(const std::string& path, int depth) {
+    struct stat st{};
+    if (lstat(path.c_str(), &st) != 0) {
+        return;
+    }
+    if (!S_ISDIR(st.st_mode)) {
+        if (unlink(path.c_str()) != 0) {
+            LOGW("remove legacy file failed: %s (%d: %s)", path.c_str(), errno, strerror(errno));
+        }
+        return;
+    }
+    if (depth > 4) {
+        LOGW("legacy directory nesting too deep, giving up: %s", path.c_str());
+        return;
+    }
+    if (DIR* dir = opendir(path.c_str())) {
+        struct dirent* entry = nullptr;
+        while ((entry = readdir(dir)) != nullptr) {
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+                continue;
+            }
+            remove_path_recursive_best_effort(path + "/" + entry->d_name, depth + 1);
+        }
+        closedir(dir);
+    }
+    if (rmdir(path.c_str()) != 0) {
+        LOGW("remove legacy directory failed: %s (%d: %s)", path.c_str(), errno, strerror(errno));
+    }
+}
+
 static void cleanup_legacy_shell_dir_best_effort() {
+    struct stat st{};
+    if (lstat(LEGACY_SHELL_DIR, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        // Missing, or a symlink planted by someone else: never follow it.
+        return;
+    }
+
     DIR* dir = opendir(LEGACY_SHELL_DIR);
     if (dir == nullptr) {
         return;
@@ -148,13 +197,7 @@ static void cleanup_legacy_shell_dir_best_effort() {
             continue;
         }
         std::string path = std::string(LEGACY_SHELL_DIR) + "/" + entry->d_name;
-        if (entry->d_type == DT_DIR) {
-            LOGW("skip nested legacy directory during cleanup: %s", path.c_str());
-            continue;
-        }
-        if (unlink(path.c_str()) != 0) {
-            LOGW("remove legacy file failed: %s (%d: %s)", path.c_str(), errno, strerror(errno));
-        }
+        remove_path_recursive_best_effort(path, 0);
     }
     closedir(dir);
 
@@ -178,7 +221,8 @@ static std::string migrate_legacy_shell_dir() {
     std::string new_uids = new_path + "/sui_uids.txt";
     if (access(old_uids.c_str(), F_OK) == 0) {
         if (copyfile(old_uids.c_str(), new_uids.c_str()) == 0) {
-            chmod(new_uids.c_str(), 0644);
+            // The uid list is the full list of granted apps; only the shell server needs it.
+            chmod(new_uids.c_str(), 0600);
             chown(new_uids.c_str(), 2000, 2000);
         } else {
             LOGW("copy legacy sui_uids.txt failed with %d: %s", errno, strerror(errno));
@@ -204,13 +248,13 @@ static std::string resolve_shell_dir_path() {
             marker_trimmed[base_len] == '/') {
             std::string name = marker_trimmed.substr(base_len + 1);
             if (is_valid_shell_dir_name(name)) {
-                if (name == "sui_shell") {
+                if (name == LEGACY_SHELL_DIR_NAME) {
                     return migrate_legacy_shell_dir();
                 }
                 return marker_trimmed;
             }
         } else if (is_valid_shell_dir_name(marker_trimmed)) {
-            if (marker_trimmed == "sui_shell") {
+            if (marker_trimmed == LEGACY_SHELL_DIR_NAME) {
                 return migrate_legacy_shell_dir();
             }
             return std::string(SHELL_BASE_DIR) + "/" + marker_trimmed;
@@ -301,7 +345,10 @@ static int sui_main(int argc, char** argv) {
         char shell_dex_path[PATH_MAX];
         snprintf(shell_dex_path, PATH_MAX, "%s/sui.dex", shell_dir);
         if (copyfile(dex_path, shell_dex_path) == 0) {
-            chmod(shell_dex_path, 0644);
+            // Only the shell server (uid 2000) reads this, so it does not need to be readable
+            // by every app on the device. The .so files stay 0644 on purpose: apps load
+            // librish.so themselves.
+            chmod(shell_dex_path, 0600);
             chown(shell_dex_path, 2000, 2000);
         }
 

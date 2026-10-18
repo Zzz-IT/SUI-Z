@@ -80,6 +80,24 @@ is_sui_pid() {
     return 1
 }
 
+# A recorded lock owner only counts as alive when the pid still exists AND still belongs to
+# this script. Checking the pid alone means a recycled pid -- some unrelated process that
+# happened to get the same number after a reboot -- keeps the lock forever and Sui never
+# starts again.
+lock_owner_is_alive() {
+    owner="$1"
+    [ -n "$owner" ] || return 1
+    [ -d "$PROC_ROOT/$owner" ] || return 1
+    if [ -r "$PROC_ROOT/$owner/cmdline" ]; then
+        if tr '\0' ' ' < "$PROC_ROOT/$owner/cmdline" 2>/dev/null | grep -q 'service\.sh'; then
+            return 0
+        fi
+        return 1
+    fi
+    # cmdline is not readable (hidepid); fall back to the pid check alone.
+    return 0
+}
+
 # Slow path: scan for the pid. Only runs when the cache is empty or stale.
 discover_sui_pid() {
     if command -v pidof >/dev/null 2>&1; then
@@ -107,15 +125,21 @@ fi
 # always record an already-dead process and never detect a live peer. We take
 # the pid from `$!` instead, which is the actual backgrounded watchdog.
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    lock_owner=""
     if [ -f "$LOCK_PID" ]; then
         read -r lock_owner < "$LOCK_PID" 2>/dev/null
-        if [ -n "$lock_owner" ] && [ -d "$PROC_ROOT/$lock_owner" ]; then
-            exit 0
-        fi
+    fi
+    if lock_owner_is_alive "$lock_owner"; then
+        exit 0
     fi
     rm -rf "$LOCK_DIR" 2>/dev/null
     mkdir "$LOCK_DIR" 2>/dev/null || exit 0
 fi
+
+# Claim the lock with our own pid straight away. The watchdog pid only exists after the
+# subshell below is backgrounded, and a peer starting in that window would find a lock
+# directory without a pid file, delete it and start a second watchdog.
+echo "$$" > "$LOCK_PID" 2>/dev/null
 
 (
     # post-fs-data.sh starts the daemon. Give it a moment to appear before the
@@ -176,6 +200,8 @@ fi
     done
 ) >/dev/null 2>&1 &
 
+# Replace our pid with the watchdog's: this shell exits immediately, and a lock owned by a
+# dead pid would let the next boot start a second watchdog alongside the first.
 echo "$!" > "$LOCK_PID" 2>/dev/null
 
 exit 0

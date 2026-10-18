@@ -62,7 +62,16 @@ import rikka.sui.util.InstrumentationUtil;
 public class SettingsInstrumentation extends Instrumentation {
 
     private final Instrumentation original;
-    private final Application application;
+
+    // Not final: the instrumentation is installed right after ActivityThread handles
+    // BIND_APPLICATION, and the Application object does not exist yet if the hook lands
+    // early. Caching it once here meant a permanently null field -- a NullPointerException
+    // in the constructor (taking the settings process down with it) and again on the first
+    // newActivity(). Resolve it on demand instead.
+    @Nullable
+    private Application application;
+
+    private boolean componentCallbacksRegistered;
 
     @SuppressWarnings("FieldCanBeLocal")
     private final ClassLoader classLoader;
@@ -74,30 +83,62 @@ public class SettingsInstrumentation extends Instrumentation {
     public SettingsInstrumentation(Instrumentation original, SuiApk suiApk) {
         this.original = original;
 
-        application = ActivityThread.currentActivityThread().getApplication();
         classLoader = suiApk.getClassLoader();
         suiActivityClass = suiApk.getSuiActivityClass();
         suiActivityConstructor = suiApk.getSuiActivityConstructor();
         this.suiApk = suiApk;
 
-        application.registerComponentCallbacks(new ComponentCallbacks2() {
+        attachApplication();
+    }
 
-            @Override
-            public void onConfigurationChanged(@NonNull Configuration newConfig) {
-                try {
-                    suiApk.updateConfiguration(newConfig);
-                } catch (Exception e) {
-                    LOGGER.e(e, "Failed to update configuration");
-                }
+    /**
+     * Returns the process Application, resolving it on first use, and registers the
+     * configuration callback exactly once. Returns null while ActivityThread has not
+     * created the Application yet; callers must degrade gracefully instead of NPE-ing.
+     */
+    @Nullable
+    private synchronized Application attachApplication() {
+        Application app = application;
+        if (app == null) {
+            try {
+                app = ActivityThread.currentActivityThread().getApplication();
+            } catch (Throwable e) {
+                LOGGER.e(e, "Cannot get Application");
+                return null;
             }
+            if (app == null) {
+                return null;
+            }
+            application = app;
+        }
 
-            @Override
-            @SuppressWarnings("deprecation")
-            public void onLowMemory() {}
+        if (componentCallbacksRegistered) {
+            return app;
+        }
+        try {
+            app.registerComponentCallbacks(new ComponentCallbacks2() {
 
-            @Override
-            public void onTrimMemory(int level) {}
-        });
+                @Override
+                public void onConfigurationChanged(@NonNull Configuration newConfig) {
+                    try {
+                        suiApk.updateConfiguration(newConfig);
+                    } catch (Exception e) {
+                        LOGGER.e(e, "Failed to update configuration");
+                    }
+                }
+
+                @Override
+                @SuppressWarnings("deprecation")
+                public void onLowMemory() {}
+
+                @Override
+                public void onTrimMemory(int level) {}
+            });
+            componentCallbacksRegistered = true;
+        } catch (Throwable e) {
+            LOGGER.e(e, "Failed to register configuration callback");
+        }
+        return app;
     }
 
     public Resources getResources() {
@@ -108,8 +149,12 @@ public class SettingsInstrumentation extends Instrumentation {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) {
             return;
         }
+        Application app = attachApplication();
+        if (app == null) {
+            return;
+        }
         try {
-            ShortcutManager shortcutManager = application.getSystemService(ShortcutManager.class);
+            ShortcutManager shortcutManager = app.getSystemService(ShortcutManager.class);
             if (shortcutManager != null) {
                 shortcutManager.reportShortcutUsed(SHORTCUT_ID);
             }
@@ -139,9 +184,14 @@ public class SettingsInstrumentation extends Instrumentation {
 
                 if (realToken != null && realToken.equals(suiToken)) {
                     LOGGER.v("creating SuiActivity");
+                    Application app = attachApplication();
+                    if (app == null) {
+                        LOGGER.e("Cannot create SuiActivity: Application is not available");
+                        return original.newActivity(cl, className, intent);
+                    }
                     reportShortcutUsedIfAvailable();
                     try {
-                        return (Activity) suiActivityConstructor.newInstance(application, suiApk.getResources());
+                        return (Activity) suiActivityConstructor.newInstance(app, suiApk.getResources());
                     } catch (InvocationTargetException e) {
                         LOGGER.e(e, "Cannot create activity");
                     }
