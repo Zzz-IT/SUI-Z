@@ -31,8 +31,12 @@ ext {
     moduleAuthor = "Zzz"
     moduleDescription = "基于 Sui 重构的 Zygisk 模块，内置 Shizuku API。需 Magisk 24.0+，请勿将 SystemUI 和 Settings 加入 DenyList。"
     moduleVersionMinor = 1
-    moduleVersionPatch = 5
+    moduleVersionPatch = 6
     moduleVersion = "v${api_version_major}.${moduleVersionMinor}.${moduleVersionPatch}"
-    moduleVersionCode = gitCommitCount
+    // The updater compares this against the value in update/sui_zygisk.json, so it
+    // has to grow with every release. `gitCommitCount` did not: two versions built
+    // without an intervening commit shared the same code, and the update dialog
+    // never appeared. Derive it from the version instead -- v1.1.6 -> 10106.
+    moduleVersionCode = api_version_major * 10000 + moduleVersionMinor * 100 + moduleVersionPatch
 
 }

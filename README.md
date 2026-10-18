@@ -1,6 +1,6 @@
 # SUI Z
 
-当前版本：**v1.1.5**。详细变更请见 [CHANGELOG.md](CHANGELOG.md#v115)。
+当前版本：**v1.1.6**。详细变更请见 [CHANGELOG.md](CHANGELOG.md#v116)。
 
 基于 Sui 现代化重构的 Zygisk 模块。提供以 Root/Shell 身份调用 Android Framework API 和运行独立 Java 服务的 Shizuku API。
 
@@ -27,10 +27,16 @@ SUI Z 主要提供两项能力：
 2. 打开您的 Root 管理器（Magisk / KernelSU / APatch），选择"从本地安装"并刷入下载的 ZIP。
 3. 重启设备。
 
+**升级到 v1.1.6 及以上：**
+- 权限弹窗不再卡死：Shell 模式下的授权请求加了 10 秒超时，用完立刻回收。
+- 设置界面不再闪退：注入时若 `application` 尚未就绪，原先会直接空指针。
+- 看门狗不再误杀：单实例锁原先记的是父进程 pid，可能双开或错误接管。
+- 写配置不再怕断电：`sui_uids.txt` 改为临时文件 + `fsync` + 原子改名。
+- 日志更安静：隐藏检查失败时 10 秒最多一条，不再逐次刷屏。
+
 **升级到 v1.1.5 及以上：**
-- 空闲耗电显著降低：模块看门狗的 `pidof` 轮询由每 5 秒改为稳态 120 秒，日均进程派生数从约 17,000 降至约 720。
-- 失效抑制已修复：包权限变更在墙钟回跳时不再被静默吞掉。
-- 桌面快捷方式清理：模块卸载时会一并清除 SUI Z 创建的桌面快捷方式（修复了旧版本偶发残留的问题）。
+- 空闲耗电显著降低：看门狗的 `pidof` 轮询由每 5 秒改为稳态 120 秒，日均进程派生数从约 17,000 降至约 720。
+- 失效抑制已修复，卸载时会清理残留的桌面快捷方式。
 
 ## 唤出管理界面
 
@@ -52,7 +58,7 @@ SUI Z 默认不会在桌面上创建图标。可以通过以下几种方式唤�
 
 # SUI Z (English)
 
-Current version: **v1.1.5**. See [CHANGELOG.md](CHANGELOG.md#v115) for the full change log.
+Current version: **v1.1.6**. See [CHANGELOG.md](CHANGELOG.md#v116) for the full change log.
 
 Modern superuser interface implementation for Android. Forked and refactored from Sui.
 
@@ -77,10 +83,16 @@ SUI Z does not add binaries to PATH and does not expose a regular launcher icon;
 2. Install the ZIP from your Root Manager (Magisk / KernelSU / APatch).
 3. Reboot.
 
+**Upgrading to v1.1.6 or above:**
+- The permission dialog no longer hangs: shell-mode requests now time out after 10 s and are released immediately.
+- No more crash when injecting into Settings if `application` is not ready yet (previously a null pointer).
+- The watchdog no longer kills the wrong process: the single-instance lock used to record the parent pid.
+- Power-loss safe config writes: `sui_uids.txt` is written to a temp file, fsynced, then renamed.
+- Quieter logs: hidden-check failures are rate-limited to one line per 10 s.
+
 **Upgrading to v1.1.5 or above:**
-- Idle power use is now significantly lower: the watchdog `pidof` polling interval went from 5 s to 120 s in steady state, reducing daily process forks from ~17,000 to ~720.
-- A bug that silently dropped package invalidations when the wall clock jumped backward has been fixed.
-- Uninstalling the module now also removes any home-screen shortcut the module created (previously a few shortcuts could leak past uninstall in rare cases).
+- Idle power use dropped significantly: watchdog `pidof` polling went from 5 s to 120 s steady state, cutting daily forks from ~17,000 to ~720.
+- Package invalidations are no longer silently dropped when the wall clock jumps backward; uninstall now also removes leftover home-screen shortcuts.
 
 ## Management UI
 

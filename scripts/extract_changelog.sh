@@ -2,16 +2,16 @@
 set -euo pipefail
 
 MODE="extract"
-if [ "${1:-}" = "--check" ]; then
-  MODE="check"
-  shift
-fi
+case "${1:-}" in
+  --check) MODE="check"; shift ;;
+  --notes) MODE="notes"; shift ;;
+esac
 
 VERSION="${1:-}"
 CHANGELOG_FILE="${2:-CHANGELOG.md}"
 
 if [ -z "$VERSION" ]; then
-  echo "Usage: $0 [--check] v1.0.0 [CHANGELOG.md]" >&2
+  echo "Usage: $0 [--check|--notes] v1.0.0 [CHANGELOG.md]" >&2
   exit 1
 fi
 
@@ -38,6 +38,30 @@ section_body() {
     END {
       if (!found) {
         exit 2
+      }
+    }
+  ' "$CHANGELOG_FILE"
+}
+
+# Prints the short summary that the KernelSU update dialog shows: the
+# `> ...` block placed directly under the `## <version>` heading, i.e.
+# before the first `###`. Keep that block to one or two lines -- it is
+# rendered as plain text in a narrow dialog, so a URL or a full changelog
+# turns into an unreadable wall of text.
+notes_body() {
+  awk -v version="$1" '
+    $0 ~ "^##[[:space:]]+(\\[" version "\\]|" version ")([[:space:]]|$)" {
+      found = 1
+      next
+    }
+    found && $0 ~ "^#{2,3}[[:space:]]+" {
+      exit
+    }
+    found && /^[[:space:]]*>/ {
+      line = $0
+      sub(/^[[:space:]]*>+[[:space:]]*/, "", line)
+      if (line != "") {
+        print line
       }
     }
   ' "$CHANGELOG_FILE"
@@ -86,6 +110,13 @@ if [ "$MODE" = "check" ]; then
   if [ "$SECTION" != "$VERSION" ]; then
     echo "Note: no '## ${VERSION}' section; using base version '## ${SECTION}' notes." >&2
   fi
+  exit 0
+fi
+
+if [ "$MODE" = "notes" ]; then
+  # Used for the KernelSU update metadata: a missing summary is not fatal,
+  # the release workflow falls back to a generic sentence.
+  notes_body "$SECTION"
   exit 0
 fi
 

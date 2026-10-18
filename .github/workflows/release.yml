@@ -123,14 +123,26 @@ jobs:
           VERSION_CODE="$(grep '^versionCode=' out/release/module.prop | cut -d= -f2)"
           VERSION_NAME="$(grep '^version=' out/release/module.prop | cut -d= -f2 | sed 's/ (.*//')"
           ZIP_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ZIP_NAME}"
-          CHANGELOG_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+
+          # KernelSU shows the `changelog` field verbatim in its update dialog.
+          # A URL there is rendered as one long unbreakable line, so ship the
+          # short `> ...` summary from CHANGELOG.md instead.
+          NOTES="$(bash scripts/extract_changelog.sh --notes "$TAG" CHANGELOG.md || true)"
+          if [ -z "$NOTES" ]; then
+            NOTES="修复若干问题，详见 Release 页面。"
+          fi
+          if command -v jq >/dev/null 2>&1; then
+            CHANGELOG_JSON="$(printf '%s' "$NOTES" | jq -Rs .)"
+          else
+            CHANGELOG_JSON="$(printf '%s' "$NOTES" | python3 -X utf8 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+          fi
 
           cat > "$RUNNER_TEMP/sui_zygisk.json" <<EOF
           {
             "version": "$VERSION_NAME",
             "versionCode": $VERSION_CODE,
             "zipUrl": "$ZIP_URL",
-            "changelog": "$CHANGELOG_URL"
+            "changelog": $CHANGELOG_JSON
           }
           EOF
 
